@@ -25,6 +25,9 @@ async def admin_stats(
     total_scores = (await db.execute(
         text("SELECT COUNT(*) FROM scores")
     )).scalar()
+    total_users = (await db.execute(
+        text("SELECT COUNT(*) FROM users")
+    )).scalar()
     active_today = (await db.execute(text(
         "SELECT COUNT(DISTINCT user_id) FROM scores WHERE submitted_at >= NOW() - INTERVAL '1 day'"
     ))).scalar()
@@ -36,6 +39,7 @@ async def admin_stats(
         "total_images": total_images,
         "annotated_images": annotated_images,
         "total_scores": total_scores,
+        "total_users": total_users,
         "active_users_today": active_today,
         "today_scores": today_scores,
         "redis_queue_length": queue_len,

@@ -1,4 +1,5 @@
 import re
+import os
 from datetime import datetime, timezone, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -8,9 +9,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import User
-import os
-
-import os
 
 # JWT_SECRET 必须在生产环境中设置，不允许使用默认值
 SECRET_KEY = os.getenv("JWT_SECRET")

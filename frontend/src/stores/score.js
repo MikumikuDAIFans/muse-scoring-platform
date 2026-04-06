@@ -32,12 +32,6 @@ export const useScoreStore = defineStore('score', () => {
         completeness_score: completeness,
       })
       scoredIds.value.add(imageId)
-      navigator.sendBeacon?.('/api/analytics/score', JSON.stringify({
-        image_id: imageId,
-        aesthetic,
-        completeness,
-        timestamp: Date.now()
-      }))
       return true
     } catch (err) {
       message.value = err.detail || '提交失败'

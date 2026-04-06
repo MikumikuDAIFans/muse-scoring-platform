@@ -8,7 +8,7 @@ from auth import (
     verify_password, hash_password, validate_username, validate_password
 )
 from models import User
-from schemas import LoginRequest, RegisterRequest
+from schemas import LoginRequest, RegisterRequest, TurnstileRequest
 from turnstile import verify_turnstile
 
 router = APIRouter()
@@ -70,6 +70,11 @@ async def register(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    # Turnstile 人机验证（生产环境必填，开发模式自动跳过）
+    ip = request.client.host if request.client else "unknown"
+    if not await verify_turnstile(req.turnstile_token, ip):
+        raise HTTPException(403, "人机验证失败，请刷新页面后重试")
+
     validate_username(req.username)
     validate_password(req.password)
 

@@ -49,7 +49,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useScoreStore } from '../stores/score'
 import api from '../api'
@@ -62,10 +62,6 @@ const images = ref([])
 const currentIndex = ref(0)
 const scores = reactive({})
 const isLoading = ref(false)
-
-onMounted(async () => {
-  await loadBatch()
-})
 
 const progressPercent = computed(() => {
   if (!images.value.length) return 0

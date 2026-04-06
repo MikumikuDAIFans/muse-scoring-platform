@@ -42,13 +42,13 @@
           <div class="stat-label">今日打分</div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon">🔴</div>
-          <div class="stat-value">{{ formatNum(stats.qps) }}</div>
-          <div class="stat-label">QPS</div>
+          <div class="stat-icon">⚡</div>
+          <div class="stat-value">{{ formatNum(stats.active_users_today) }}</div>
+          <div class="stat-label">今日活跃</div>
         </div>
         <div class="stat-card">
           <div class="stat-icon">📦</div>
-          <div class="stat-value">{{ formatNum(stats.redis_queue) }}</div>
+          <div class="stat-value">{{ formatNum(stats.redis_queue_length) }}</div>
           <div class="stat-label">Redis 待落库</div>
         </div>
       </div>

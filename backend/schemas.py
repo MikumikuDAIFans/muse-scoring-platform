@@ -10,6 +10,7 @@ class LoginRequest(BaseModel):
 class RegisterRequest(BaseModel):
     username: str
     password: str
+    turnstile_token: str = ""
 
 
 class TurnstileRequest(BaseModel):

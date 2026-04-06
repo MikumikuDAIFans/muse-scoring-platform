@@ -37,6 +37,11 @@
             <span v-else>{{ activeTab === 'login' ? '登录' : '注册' }} 🚀</span>
           </button>
           
+          <!-- Turnstile Widget (仅注册时显示) -->
+          <div v-if="activeTab === 'register' && turnstileSiteKey" class="turnstile-wrapper">
+            <div ref="turnstileWidget" class="cf-turnstile"></div>
+          </div>
+          
           <p v-if="error" class="error-text">{{ error }}</p>
         </form>
       </div>
@@ -47,7 +52,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '../stores/user'
 
 const emit = defineEmits(['login-success'])
@@ -57,19 +62,68 @@ const activeTab = ref('login')
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
+const turnstileWidget = ref(null)
+let turnstileWidgetId = null
+
+// Turnstile Site Key
+const turnstileSiteKey = computed(() => {
+  return import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
+})
+const turnstileToken = ref('')
+
+onMounted(() => {
+  initTurnstile()
+})
+
+function initTurnstile() {
+  if (!turnstileSiteKey.value) return
+  // Wait for Cloudflare Turnstile script to load
+  const script = document.createElement('script')
+  script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+  script.async = true
+  script.defer = true
+  script.onload = renderTurnstile
+  document.head.appendChild(script)
+  
+  if (window.turnstile) {
+    renderTurnstile()
+  }
+}
+
+function renderTurnstile() {
+  if (!window.turnstile || !turnstileWidget.value) return
+  turnstileWidgetId = window.turnstile.render(turnstileWidget.value, {
+    sitekey: turnstileSiteKey.value,
+    theme: 'light',
+    size: 'normal',
+    callback: (token) => { turnstileToken.value = token },
+  })
+}
 
 async function handleSubmit() {
   if (!form.username || !form.password) {
     error.value = '请填写用户名和密码'
     return
   }
+  
+  // 注册时需要 Turnstile token
+  if (activeTab.value === 'register' && turnstileSiteKey.value && !turnstileToken.value) {
+    error.value = '请先完成人机验证'
+    return
+  }
+  
   loading.value = true
   error.value = ''
   try {
+    const payload = { ...form }
+    if (activeTab.value === 'register') {
+      payload.turnstile_token = turnstileToken.value
+    }
+    
     if (activeTab.value === 'login') {
       await userStore.login(form)
     } else {
-      await userStore.register(form)
+      await userStore.register(payload)
     }
     emit('login-success')
   } catch (err) {
@@ -78,6 +132,12 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
+onUnmounted(() => {
+  if (turnstileWidgetId && window.turnstile) {
+    window.turnstile.remove(turnstileWidgetId)
+  }
+})
 </script>
 
 <style scoped>
@@ -227,6 +287,15 @@ async function handleSubmit() {
   text-align: center;
   margin-top: 8px;
   font-size: 14px;
+}
+
+.turnstile-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+.cf-turnstile {
+  min-height: 65px;
 }
 
 .brand {
