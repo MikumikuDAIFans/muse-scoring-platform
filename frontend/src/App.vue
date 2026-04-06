@@ -13,10 +13,10 @@
         <p class="hint-text">本轮共 10 张图片，请从"美学"和"完成度"进行评分哦~</p>
         
         <!-- Turnstile Widget -->
-        <div class="turnstile-container">
+        <div class="turnstile-container" v-if="turnstileSiteKey">
           <div 
             class="cf-turnstile" 
-            data-sitekey="1x00000000000000000000AA"
+            :data-sitekey="turnstileSiteKey"
             data-theme="light"
             data-size="normal"
             ref="turnstileWidget"
@@ -58,7 +58,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useUserStore } from './stores/user'
 import api from './api'
 import LoginPage from './components/LoginPage.vue'
@@ -74,6 +74,11 @@ const turnstileReady = ref(true)
 const turnstileWidget = ref(null)
 const noMoreMsg = ref('')
 let turnstileWidgetId = null
+
+// Turnstile Site Key (从环境变量读取，生产环境必填)
+const turnstileSiteKey = computed(() => {
+  return import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
+})
 
 onMounted(() => {
   userStore.loadToken()

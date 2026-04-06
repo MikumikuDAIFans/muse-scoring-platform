@@ -10,7 +10,18 @@ from database import get_db
 from models import User
 import os
 
-SECRET_KEY = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+import os
+
+# JWT_SECRET 必须在生产环境中设置，不允许使用默认值
+SECRET_KEY = os.getenv("JWT_SECRET")
+if not SECRET_KEY:
+    import warnings
+    warnings.warn(
+        "JWT_SECRET 环境变量未设置！使用不安全的默认值。生产环境请务必配置强随机密钥。",
+        RuntimeWarning,
+        stacklevel=1
+    )
+    SECRET_KEY = "dev-only-insecure-key-do-not-use-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天
 MAX_FAILED_ATTEMPTS = 5
