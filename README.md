@@ -9,8 +9,8 @@
 - [项目简介](#项目简介)
 - [系统架构](#系统架构)
 - [技术栈详解](#技术栈详解)
-- [环境准备](#环境准备)
-- [快速部署](#快速部署)
+- [本地开发部署（Windows）](#本地开发部署windows)
+- [☁️ 生产环境部署（Cloudflare 生态）](#️-生产环境部署cloudflare-生态)
 - [详细操作指南](#详细操作指南)
 - [日常运维](#日常运维)
 - [故障排查](#故障排查)
@@ -116,7 +116,9 @@
 
 ---
 
-## 环境准备
+## 本地开发部署（Windows）
+
+> 💡 **说明**：本节适用于本地开发和测试。生产环境部署请参考 [☁️ 生产环境部署（Cloudflare 生态）](#️-生产环境部署cloudflare-生态) 章节。
 
 ### 第一步：安装 Docker
 
@@ -218,7 +220,7 @@ TURNSTILE_SECRET_KEY=
 
 ---
 
-## 快速部署
+## 快速部署（本地测试）
 
 ### 一键启动所有服务
 
@@ -297,6 +299,563 @@ docker compose logs -f fastapi
 | 密码 | admin123456 |
 
 > ⚠️ **首次登录后请立即修改密码！**
+
+---
+
+## ☁️ 生产环境部署（Cloudflare 生态）
+
+> 💡 **重要说明**：本节介绍如何在 Cloudflare 生态中部署生产环境。Windows Docker Compose 仅用于本地开发和测试。
+
+### 为什么选择 Cloudflare 生态？
+
+| 优势 | 说明 |
+|------|------|
+| **全球 CDN** | Cloudflare 边缘节点覆盖全球，用户访问速度极快 |
+| **免费额度** | Workers、Pages、R2、D1 都有 generous 的免费额度 |
+| **自动 HTTPS** | 无需手动配置 SSL 证书，Cloudflare 自动处理 |
+| **DDoS 防护** | 内置企业级 DDoS 防护 |
+| **Turnstile 验证** | 免费的人机验证，替代 reCAPTCHA |
+| **零信任网络** | Cloudflare Tunnel 无需开放端口 |
+
+### 生产架构概览
+
+```
+用户浏览器
+    ↓
+[Cloudflare CDN] 全球加速 + DDoS 防护 + HTTPS
+    ↓
+[Cloudflare Pages] 前端静态资源托管（Vue 3 构建产物）
+    ↓
+[Cloudflare Workers] API 路由转发（可选，或直接连接后端）
+    ↓
+[云服务器/VPS] FastAPI 后端服务（Granian ASGI）
+    ↓
+[Neon/Supabase] PostgreSQL 云数据库（或自建）
+[Upstash] Redis 云缓存（或自建）
+```
+
+### 部署方案选择
+
+根据你的预算和技术水平，我们提供两种方案：
+
+| 方案 | 成本 | 复杂度 | 推荐场景 |
+|------|------|--------|---------|
+| **方案 A：全 Cloudflare 托管** | 极低（接近免费） | 中等 | 中小型项目，追求低成本 |
+| **方案 B：混合部署** | 低到中等 | 较低 | 需要更强后端性能 |
+
+---
+
+### 方案 A：全 Cloudflare 托管部署
+
+> 前端使用 Cloudflare Pages，后端使用 Cloudflare Workers + D1/Neon 数据库
+
+#### 前置准备
+
+1. **注册 Cloudflare 账号**
+   - 访问 [Cloudflare 官网](https://dash.cloudflare.com/sign-up)
+   - 使用邮箱注册并完成验证
+
+2. **绑定域名（可选但推荐）**
+   - 将你的域名 DNS 托管到 Cloudflare
+   - 在 Cloudflare Dashboard 中添加站点
+
+3. **安装 Wrangler CLI**
+   ```powershell
+   # 安装 Cloudflare Workers CLI 工具
+   npm install -g wrangler
+   
+   # 登录 Cloudflare
+   wrangler login
+   ```
+
+#### 第一步：部署前端到 Cloudflare Pages
+
+1. **构建前端产物**
+
+   在你的 Windows 本地执行：
+   ```powershell
+   cd frontend
+   npm install
+   npm run build
+   ```
+
+   构建完成后，会在 `frontend/dist/` 目录生成静态文件。
+
+2. **通过 Dashboard 部署（推荐新手）**
+
+   - 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+   - 左侧菜单选择 **Workers & Pages** → **Pages**
+   - 点击 **Connect to Git**
+   - 选择你的 GitHub 仓库 `muse-scoring-platform`
+   - 配置构建设置：
+     - **Framework preset**: Vue
+     - **Build command**: `cd frontend && npm run build`
+     - **Build output directory**: `frontend/dist`
+     - **Root directory**: `/`（项目根目录）
+   - 点击 **Save and Deploy**
+
+3. **通过 Wrangler CLI 部署（推荐开发者）**
+
+   在项目根目录创建 `frontend/wrangler.toml`：
+   ```toml
+   name = "muse-scoring-frontend"
+   compatibility_date = "2025-01-01"
+   
+   [site]
+   bucket = "./dist"
+   ```
+
+   然后执行：
+   ```powershell
+   cd frontend
+   npm run build
+   wrangler pages deploy dist --project-name=muse-scoring-frontend
+   ```
+
+4. **配置 Pages 自定义域名**
+
+   - 在 Pages 项目设置中，点击 **Custom domains**
+   - 添加你的域名（如 `app.yourdomain.com`）
+   - Cloudflare 会自动配置 DNS 和 SSL
+
+#### 第二步：配置后端数据库
+
+**选项 1：使用 Neon（推荐，免费且易用）**
+
+1. 访问 [Neon 官网](https://neon.tech/)
+2. 使用 GitHub 账号登录
+3. 创建新项目，选择 PostgreSQL 17
+4. 创建数据库 `scoring`
+5. 复制连接字符串，格式如下：
+   ```
+   postgresql://user:password@ep-xxx.region.aws.neon.tech/scoring
+   ```
+
+   > 💡 **注意**：Neon 的连接字符串需要转换为本项目使用的格式：
+   > ```
+   > postgresql+asyncpg://user:password@ep-xxx.region.aws.neon.tech/scoring
+   > ```
+
+**选项 2：使用 Supabase（备选）**
+
+1. 访问 [Supabase 官网](https://supabase.com/)
+2. 创建新项目
+3. 在 Project Settings → Database 中获取连接字符串
+4. 使用 Direct connection 模式的连接字符串
+
+**选项 3：自建 PostgreSQL（完全控制）**
+
+如果你有云服务器（VPS），可以自行安装 PostgreSQL：
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install postgresql-17
+
+# 创建数据库和用户
+sudo -u postgres psql
+CREATE DATABASE scoring;
+CREATE USER muse WITH PASSWORD 'your-strong-password';
+GRANT ALL PRIVILEGES ON DATABASE scoring TO muse;
+\q
+```
+
+#### 第三步：配置 Redis 缓存
+
+**选项 1：使用 Upstash（推荐，免费且支持全球访问）**
+
+1. 访问 [Upstash 官网](https://upstash.com/)
+2. 创建 Redis 数据库
+3. 选择离你用户最近的区域
+4. 复制连接字符串（REST API 或 Native 协议）
+
+   > 💡 **注意**：本项目使用 Native Redis 协议，请使用 Standard connection string：
+   > ```
+   > redis://default:your-password@your-redis.upstash.io:6379
+   > ```
+
+**选项 2：自建 Redis（VPS 部署）**
+
+```bash
+# Ubuntu/Debian
+sudo apt install redis-server
+
+# 配置密码（编辑 /etc/redis/redis.conf）
+requirepass your-strong-redis-password
+
+# 重启 Redis
+sudo systemctl restart redis-server
+```
+
+#### 第四步：部署后端服务
+
+由于 Cloudflare Workers 不支持长时间运行的 Python 进程，后端需要部署在传统服务器上。以下是几种方案：
+
+**方案 A1：使用 Railway（最简单，有免费额度）**
+
+1. 访问 [Railway](https://railway.app/)
+2. 使用 GitHub 账号登录
+3. 点击 **New Project** → **Deploy from GitHub repo**
+4. 选择 `muse-scoring-platform` 仓库
+5. Railway 会自动识别 `backend/` 目录的 Dockerfile
+6. 在 Variables 标签页中添加环境变量（见下方配置清单）
+7. 点击 **Deploy**
+
+**方案 A2：使用 Render（备选）**
+
+1. 访问 [Render](https://render.com/)
+2. 点击 **New** → **Web Service**
+3. 连接 GitHub 仓库
+4. 配置：
+   - **Root Directory**: `backend`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `granian --interface asgi --host 0.0.0.0 --port $PORT main:app`
+5. 添加环境变量
+6. 点击 **Create Web Service**
+
+**方案 A3：使用 VPS 自建（最灵活）**
+
+1. 购买一台云服务器（推荐 Hetzner、DigitalOcean、Vultr）
+2. 安装 Docker
+3. 只部署后端服务：
+   ```bash
+   # 克隆项目
+   git clone https://github.com/MikumikuDAIFans/muse-scoring-platform.git
+   cd muse-scoring-platform
+   
+   # 只启动后端服务（不含 Nginx）
+   docker compose up -d postgres redis pgbouncer fastapi
+   
+   # 查看后端地址
+   curl http://localhost:8000/health
+   ```
+
+#### 第五步：配置环境变量
+
+无论选择哪种后端部署方式，都需要设置以下环境变量：
+
+| 变量名 | 说明 | 示例值 |
+|--------|------|--------|
+| `DATABASE_URL` | 数据库连接字符串 | `postgresql+asyncpg://user:pass@db-host:5432/scoring` |
+| `REDIS_URL` | Redis 连接字符串 | `redis://default:pass@redis-host:6379` |
+| `JWT_SECRET` | **必须使用强随机密钥** | 用 PowerShell 生成（见下方） |
+| `ADMIN_USERNAME` | 管理员用户名 | `admin` |
+| `ADMIN_PASSWORD` | **必须修改默认密码** | `your-very-strong-password` |
+| `TURNSTILE_SITE_KEY` | Cloudflare Turnstile 站点密钥 | 见下方获取方法 |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile 密钥 | 见下方获取方法 |
+
+**生成 JWT 密钥：**
+```powershell
+-join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | ForEach-Object {[char]$_})
+```
+
+#### 第六步：配置 Cloudflare Turnstile 人机验证
+
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. 左侧菜单选择 **Turnstile**
+3. 点击 **Add Site**
+4. 填写信息：
+   - **Site name**: `Muse Scoring Platform`
+   - **Domain**: 你的域名（如 `app.yourdomain.com`）
+   - **Widget Mode**: Managed（推荐）
+5. 记录生成的 **Site Key** 和 **Secret Key**
+6. 填入后端环境变量
+
+#### 第七步：配置前端 API 地址
+
+前端需要知道后端 API 的地址。修改前端 API 配置文件：
+
+编辑 `frontend/src/api/index.js`，将 `baseURL` 改为你的后端地址：
+
+```javascript
+const API_BASE_URL = 'https://your-backend-url.railway.app' // 替换为你的后端地址
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+```
+
+然后重新构建并部署前端：
+```powershell
+cd frontend
+npm run build
+wrangler pages deploy dist --project-name=muse-scoring-frontend
+```
+
+#### 第八步：导入图片数据
+
+图片数据存储在本地的 `images/` 目录。生产环境有两种方案：
+
+**方案 A：使用 Cloudflare R2 存储图片（推荐）**
+
+1. 在 Cloudflare Dashboard 创建 R2 Bucket
+2. 上传所有图片到 R2
+3. 修改 `import_images.py`，将本地路径改为 R2 URL
+4. 执行导入脚本
+
+**方案 B：继续本地存储 + Nginx 服务**
+
+如果你的后端部署在 VPS 上：
+```bash
+# 在 VPS 上执行
+cd muse-scoring-platform
+# 将图片上传到 images/ 目录
+# 然后执行导入
+docker compose exec fastapi python import_images.py
+```
+
+#### 第九步：验证部署
+
+1. **访问前端页面**
+   ```
+   https://你的-pages-url.pages.dev
+   ```
+
+2. **测试后端 API**
+   ```powershell
+   curl https://你的后端地址/health
+   curl https://你的后端地址/health/ready
+   ```
+
+3. **测试用户注册登录**
+   - 在前端页面注册一个新账号
+   - 登录并尝试评分
+
+4. **测试管理员功能**
+   - 使用管理员账号登录
+   - 查看统计信息
+   - 尝试导出数据
+
+---
+
+### 方案 B：混合部署（VPS + Cloudflare）
+
+> 如果你有一台 VPS，这是最简单且可控的方案
+
+#### 架构
+
+```
+用户浏览器
+    ↓
+[Cloudflare CDN] DNS + HTTPS + DDoS 防护
+    ↓
+[Cloudflare Tunnel] 安全隧道（无需开放 VPS 端口）
+    ↓
+[VPS 上的 Nginx] 反向代理
+    ↓
+[Docker Compose] 运行所有服务
+```
+
+#### 第一步：准备 VPS
+
+1. **购买 VPS**（推荐配置）
+   - CPU: 2 核
+   - 内存: 4GB
+   - 磁盘: 40GB SSD
+   - 系统: Ubuntu 22.04 LTS
+   - 推荐提供商: Hetzner、DigitalOcean、Vultr
+
+2. **安装 Docker**
+   ```bash
+   # SSH 登录 VPS
+   ssh root@your-vps-ip
+   
+   # 安装 Docker
+   curl -fsSL https://get.docker.com | sh
+   
+   # 添加当前用户到 docker 组
+   usermod -aG docker $USER
+   
+   # 验证安装
+   docker --version
+   docker compose version
+   ```
+
+#### 第二步：配置 Cloudflare Tunnel
+
+1. **安装 cloudflared**
+   ```bash
+   # 下载并安装
+   sudo curl -L --output /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+   sudo chmod +x /usr/local/bin/cloudflared
+   ```
+
+2. **创建 Tunnel**
+   ```bash
+   # 登录 Cloudflare
+   cloudflared tunnel login
+   
+   # 创建 Tunnel
+   cloudflared tunnel create muse-scoring
+   
+   # 这会生成一个凭证文件在 ~/.cloudflared/
+   ```
+
+3. **配置 Tunnel 路由**
+   
+   编辑 `~/.cloudflared/config.yml`：
+   ```yaml
+   tunnel: <tunnel-id>
+   credentials-file: /root/.cloudflared/<tunnel-id>.json
+   
+   ingress:
+     - hostname: app.yourdomain.com
+       service: http://localhost:8080
+     - service: http_status:404
+   ```
+
+4. **配置 DNS**
+   ```bash
+   # 添加 DNS 记录指向 Tunnel
+   cloudflared tunnel route dns muse-scoring app.yourdomain.com
+   ```
+
+5. **运行 Tunnel**
+   ```bash
+   # 前台运行（测试）
+   cloudflared tunnel run muse-scoring
+   
+   # 或作为 systemd 服务（生产）
+   cloudflared service install
+   sudo systemctl enable cloudflared
+   sudo systemctl start cloudflared
+   ```
+
+#### 第三步：部署应用到 VPS
+
+1. **克隆项目**
+   ```bash
+   git clone https://github.com/MikumikuDAIFans/muse-scoring-platform.git
+   cd muse-scoring-platform
+   ```
+
+2. **配置环境变量**
+   ```bash
+   cp .env.example .env
+   nano .env
+   ```
+   
+   修改以下配置：
+   ```env
+   # 使用 PgBouncer 作为数据库入口（推荐）
+   DATABASE_URL=postgresql+asyncpg://postgres:postgres@pgbouncer:6432/scoring
+   REDIS_URL=redis://redis:6379
+   JWT_SECRET=<用PowerShell生成的强密钥>
+   ADMIN_USERNAME=admin
+   ADMIN_PASSWORD=<修改为强密码>
+   TURNSTILE_SITE_KEY=<你的Turnstile Site Key>
+   TURNSTILE_SECRET_KEY=<你的Turnstile Secret Key>
+   ```
+
+3. **构建前端**
+   ```bash
+   # 需要 Node.js
+   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+   sudo apt install -y nodejs
+   
+   cd frontend
+   npm install
+   npm run build
+   cd ..
+   ```
+
+4. **启动所有服务**
+   ```bash
+   docker compose up -d --build
+   ```
+
+5. **验证部署**
+   ```bash
+   # 检查所有服务状态
+   docker compose ps
+   
+   # 测试本地访问
+   curl http://localhost:8080
+   curl http://localhost:8000/health
+   ```
+
+6. **导入图片**
+   ```bash
+   # 上传图片到 VPS 的 images/ 目录
+   scp *.jpg root@your-vps-ip:/root/muse-scoring-platform/images/
+   
+   # 执行导入
+   docker compose exec fastapi python import_images.py
+   ```
+
+#### 第四步：通过域名访问
+
+完成 Cloudflare Tunnel 配置后，访问：
+```
+https://app.yourdomain.com
+```
+
+Cloudflare 会自动提供 HTTPS 证书，无需额外配置。
+
+---
+
+### 部署检查清单
+
+部署完成后，请逐项检查：
+
+- [ ] 前端页面可以正常访问（HTTPS）
+- [ ] 用户注册功能正常
+- [ ] 用户登录功能正常
+- [ ] Turnstile 人机验证正常显示
+- [ ] 图片加载正常
+- [ ] 评分提交成功
+- [ ] 管理员可以登录后台
+- [ ] 统计数据正确显示
+- [ ] 数据导出功能正常
+- [ ] JWT_SECRET 已更换为强随机密钥
+- [ ] 管理员密码已修改
+- [ ] 数据库已配置自动备份
+
+---
+
+### 部署后的运维
+
+#### 更新应用
+
+```powershell
+# 拉取最新代码
+git pull origin master
+
+# 重新构建前端
+cd frontend
+npm install
+npm run build
+
+# 重新部署前端到 Cloudflare Pages
+wrangler pages deploy dist --project-name=muse-scoring-frontend
+
+# 如果使用 VPS，重启后端
+docker compose up -d --build fastapi
+```
+
+#### 监控和告警
+
+1. **Cloudflare Analytics**
+   - 在 Dashboard 中查看访问量、带宽、威胁
+   - 设置异常流量告警
+
+2. **数据库监控**
+   ```bash
+   # 查看数据库连接数
+   docker compose exec postgres psql -U postgres -d scoring -c "SELECT count(*) FROM pg_stat_activity;"
+   
+   # 查看数据库大小
+   docker compose exec postgres psql -U postgres -d scoring -c "SELECT pg_database_size('scoring');"
+   ```
+
+3. **Redis 监控**
+   ```bash
+   docker compose exec redis redis-cli INFO memory
+   docker compose exec redis redis-cli DBSIZE
+   ```
 
 ---
 
