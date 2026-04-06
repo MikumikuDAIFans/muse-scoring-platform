@@ -9,6 +9,7 @@
 - [项目简介](#项目简介)
 - [系统架构](#系统架构)
 - [技术栈详解](#技术栈详解)
+- [🚀 快速上手（从零到上线）](#-快速上手从零到上线)
 - [本地开发部署（Windows）](#本地开发部署windows)
 - [☁️ 生产环境部署（Cloudflare 生态）](#️-生产环境部署cloudflare-生态)
 - [详细操作指南](#详细操作指南)
@@ -113,6 +114,39 @@
 | Redis | 7 | 缓存/队列 | 内存操作，速度极快 |
 | Docker Compose | - | 容器编排 | 一键启动所有服务 |
 | Nginx | alpine | 反向代理 | 统一入口，静态文件服务 |
+
+---
+
+## 🚀 快速上手（从零到上线）
+
+> 📌 **目标**：从 0 开始，将项目部署到 Cloudflare 生态并正式上线
+> ⏱️ 预计耗时：30-45 分钟
+> 
+> 👉 **详细步骤请参考**：[DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md)
+
+### 快速路线图
+
+```
+1. 创建 R2 存储 (5min)     → Cloudflare Dashboard → R2
+2. 创建 Turnstile (2min)    → Cloudflare Dashboard → Turnstile
+3. 创建数据库 (5min)         → Neon / Supabase（免费）
+4. 创建 Redis (3min)         → Upstash（免费）
+5. 部署后端 (10min)          → Railway / Render / VPS
+6. 部署前端 (5min)           → Cloudflare Pages
+7. 导入图片 (2min)           → python import_images.py
+8. 验证上线                 → 浏览器访问前端域名
+```
+
+### 核心资源速查
+
+| 资源 | 推荐服务 | 免费额度 |
+|------|---------|---------|
+| 前端托管 | Cloudflare Pages | 无限带宽，500 次构建/月 |
+| 图片存储 | Cloudflare R2 | 10GB 存储，100 万次读/月 |
+| 人机验证 | Cloudflare Turnstile | 完全免费 |
+| 数据库 | Neon | 500MB 存储 |
+| Redis | Upstash | 10K 命令/天 |
+| 后端托管 | Railway | $5/月免费额度 |
 
 ---
 
