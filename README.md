@@ -542,6 +542,11 @@ sudo systemctl restart redis-server
 | `ADMIN_PASSWORD` | **必须修改默认密码** | `your-very-strong-password` |
 | `TURNSTILE_SITE_KEY` | Cloudflare Turnstile 站点密钥 | 见下方获取方法 |
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile 密钥 | 见下方获取方法 |
+| `R2_ACCOUNT_ID` | **Cloudflare Account ID** | 见下方 R2 配置说明 |
+| `R2_ACCESS_KEY_ID` | **R2 Access Key ID** | 从 R2 API Tokens 获取 |
+| `R2_SECRET_ACCESS_KEY` | **R2 Secret Access Key** | 从 R2 API Tokens 获取 |
+| `R2_BUCKET` | R2 Bucket 名称 | `muse-images`（默认） |
+| `R2_PUBLIC_URL` | R2 自定义域名（可选） | `https://images.yourdomain.com` |
 
 **生成 JWT 密钥：**
 ```powershell
@@ -559,6 +564,67 @@ sudo systemctl restart redis-server
    - **Widget Mode**: Managed（推荐）
 5. 记录生成的 **Site Key** 和 **Secret Key**
 6. 填入后端环境变量
+
+#### 第六步半：配置 Cloudflare R2 图片存储（生产环境必需）
+
+生产环境中，图片**必须**存储在 Cloudflare R2 中，而不是本地文件系统。
+
+**步骤 1：创建 R2 Bucket**
+
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. 左侧菜单选择 **R2**
+3. 点击 **Create Bucket**
+4. 填写信息：
+   - **Bucket name**: `muse-images`
+   - 其他保持默认
+5. 点击 **Create Bucket**
+
+**步骤 2：创建 R2 API Token**
+
+1. 在 R2 页面，点击左侧 **Manage R2 API Tokens**
+2. 点击 **Create API Token**
+3. 填写信息：
+   - **Token name**: `muse-scoring-upload`
+   - **Permissions**: 选择 `Object Read & Write`
+   - **Bucket**: 选择 `muse-images`
+4. 点击 **Create API Token**
+5. **立即复制** Access Key ID 和 Secret Access Key（只显示一次！）
+
+**步骤 3：配置自定义域名（可选但推荐）**
+
+1. 在 R2 Bucket 页面，点击你的 Bucket
+2. 点击 **Settings** 标签
+3. 找到 **Custom Domains**，点击 **Connect Domain**
+4. 输入子域名（如 `images.yourdomain.com`）
+5. Cloudflare 会自动创建 DNS 记录
+
+**步骤 4：填入环境变量**
+
+将以下变量添加到后端环境变量中：
+
+```env
+# Cloudflare R2 配置
+R2_ACCOUNT_ID=你的Cloudflare Account ID（在右侧边栏可见）
+R2_ACCESS_KEY_ID=刚才创建的 API Token 的 Access Key
+R2_SECRET_ACCESS_KEY=刚才创建的 API Token 的 Secret Key
+R2_BUCKET=muse-images
+R2_PUBLIC_URL=https://images.yourdomain.com  # 如果配置了自定义域名
+# 如果没有自定义域名，使用：https://pub-xxxx.r2.dev
+```
+
+**步骤 5：导入图片**
+
+配置完成后，运行导入脚本：
+
+```bash
+# 本地开发环境
+cd backend
+pip install -r requirements.txt
+python import_images.py
+
+# 生产环境（Railway/Render等）
+# 图片会在首次运行时自动上传到 R2
+```
 
 #### 第七步：配置前端 API 地址
 
@@ -587,25 +653,39 @@ wrangler pages deploy dist --project-name=muse-scoring-frontend
 
 #### 第八步：导入图片数据
 
-图片数据存储在本地的 `images/` 目录。生产环境有两种方案：
+**生产环境（推荐）：使用 Cloudflare R2 存储图片**
 
-**方案 A：使用 Cloudflare R2 存储图片（推荐）**
+已完成 R2 配置后，只需运行导入脚本：
 
-1. 在 Cloudflare Dashboard 创建 R2 Bucket
-2. 上传所有图片到 R2
-3. 修改 `import_images.py`，将本地路径改为 R2 URL
-4. 执行导入脚本
-
-**方案 B：继续本地存储 + Nginx 服务**
-
-如果你的后端部署在 VPS 上：
 ```bash
-# 在 VPS 上执行
-cd muse-scoring-platform
-# 将图片上传到 images/ 目录
-# 然后执行导入
-docker compose exec fastapi python import_images.py
+# 确保环境变量已设置（R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY）
+cd backend
+python import_images.py
 ```
+
+脚本会自动：
+1. 读取本地 `images/` 目录的图片
+2. 上传每张图片到 R2 Bucket
+3. 将 R2 公开 URL 存入 PostgreSQL 数据库
+
+**输出示例：**
+```
+🚀 生产模式: 图片将上传到 Cloudflare R2
+Imported 10 images...
+Imported 20 images...
+...
+Done! Total: 1000 images
+✅ 所有图片已上传到 R2 Bucket: muse-images
+```
+
+**本地开发环境（可选）：使用本地存储**
+
+如果不配置 R2 环境变量，脚本会自动降级到本地模式：
+```
+⚠️  开发模式: 使用本地 URL (请配置 R2_* 环境变量以启用生产模式)
+```
+
+此时图片 URL 会指向 `http://localhost:8080/images/xxx.png`，仅用于本地测试。
 
 #### 第九步：验证部署
 
