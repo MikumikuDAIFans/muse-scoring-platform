@@ -16,16 +16,30 @@ from redis_worker import process_scores
 
 app = FastAPI(title="Muse Scoring Platform")
 
+
+def parse_allowed_origins():
+    raw = os.getenv("ALLOWED_ORIGINS")
+    if not raw:
+        return ["*"]
+
+    origins = []
+    for origin in raw.split(","):
+        normalized = origin.strip().rstrip("/")
+        if normalized:
+            origins.append(normalized)
+    return origins or ["*"]
+
+
 # CORS
 # 生产环境通过 ALLOWED_ORIGINS 环境变量配置允许的域名，逗号分隔
 # 默认值仅用于本地开发，生产环境务必设置具体域名
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",") if os.getenv("ALLOWED_ORIGINS") else ["*"]
+ALLOWED_ORIGINS = parse_allowed_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["*"],
 )
 
 # 注册异常处理器

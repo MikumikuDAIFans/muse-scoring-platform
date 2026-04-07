@@ -52,7 +52,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useUserStore } from '../stores/user'
 
 const emit = defineEmits(['login-success'])
@@ -77,21 +77,27 @@ onMounted(() => {
 
 function initTurnstile() {
   if (!turnstileSiteKey.value) return
-  // Wait for Cloudflare Turnstile script to load
-  const script = document.createElement('script')
-  script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-  script.async = true
-  script.defer = true
-  script.onload = renderTurnstile
-  document.head.appendChild(script)
-  
   if (window.turnstile) {
     renderTurnstile()
+    return
   }
+
+  const timer = window.setInterval(() => {
+    if (window.turnstile) {
+      window.clearInterval(timer)
+      renderTurnstile()
+    }
+  }, 200)
+
+  window.setTimeout(() => window.clearInterval(timer), 10000)
 }
 
 function renderTurnstile() {
   if (!window.turnstile || !turnstileWidget.value) return
+  if (turnstileWidgetId) {
+    window.turnstile.remove(turnstileWidgetId)
+    turnstileWidgetId = null
+  }
   turnstileWidgetId = window.turnstile.render(turnstileWidget.value, {
     sitekey: turnstileSiteKey.value,
     theme: 'light',
@@ -132,6 +138,12 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
+watch(activeTab, async (tab) => {
+  if (tab !== 'register' || !turnstileSiteKey.value) return
+  await nextTick()
+  initTurnstile()
+})
 
 onUnmounted(() => {
   if (turnstileWidgetId && window.turnstile) {
