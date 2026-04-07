@@ -48,14 +48,12 @@ async def submit_score(
     user: User = Depends(get_current_user),
     r: aioredis.Redis = Depends(get_redis),
 ):
-    # 原子性地标记已打分，防止并发重复提交
-    scored_key = f"user:{user.id}:scored"
-    was_added = await r.sadd(scored_key, str(req.image_id))
-    if not was_added:
+    # Use a short-lived Redis lock to prevent accidental double clicks.
+    # Long-term duplicate protection is enforced by the database unique index.
+    dedup_key = f"dedup:submit:{user.id}:{req.image_id}"
+    was_locked = await r.set(dedup_key, "1", ex=10, nx=True)
+    if not was_locked:
         raise HTTPException(409, "Already scored this image")
-
-    # 设置过期时间，防止僵尸key
-    await r.expire(scored_key, 86400 * 7)
 
     payload = {
         "image_id": req.image_id,
@@ -64,7 +62,6 @@ async def submit_score(
         "completeness_score": req.completeness_score,
     }
     await r.lpush("score_queue", json.dumps(payload))
-    await r.setex(f"dedup:submit:{user.id}:{req.image_id}", 10, "1")
 
     return {"status": "ok"}
 

@@ -1,10 +1,9 @@
 import json
 import asyncio
 import logging
-from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
-from database import engine, async_session, redis
+from database import async_session, redis
 from models import Score
 
 logger = logging.getLogger("worker")
@@ -30,44 +29,27 @@ async def process_scores():
 
         try:
             async with async_session() as session:
-                # Build raw SQL for batch insert with ON CONFLICT
-                values_list = []
-                params = {}
-                for i, rec in enumerate(records):
-                    prefix = f"v{i}_"
-                    values_list.append(f"(:{prefix}image_id, :{prefix}user_id, :{prefix}aesthetic_score, :{prefix}completeness_score, NOW())")
-                    params[f"{prefix}image_id"] = rec["image_id"]
-                    params[f"{prefix}user_id"] = rec["user_id"]
-                    params[f"{prefix}aesthetic_score"] = rec["aesthetic_score"]
-                    params[f"{prefix}completeness_score"] = rec["completeness_score"]
-
-                values_clause = ", ".join(values_list)
-                insert_sql = text(f"""
-                    INSERT INTO scores (image_id, user_id, aesthetic_score, completeness_score, submitted_at)
-                    VALUES {values_clause}
-                    ON CONFLICT (user_id, image_id) DO NOTHING
-                    RETURNING image_id
-                """)
-                result = await session.execute(insert_sql, params)
+                insert_sql = (
+                    insert(Score)
+                    .values(records)
+                    .on_conflict_do_nothing(index_elements=["user_id", "image_id"])
+                    .returning(Score.image_id)
+                )
+                result = await session.execute(insert_sql)
                 inserted_ids = [row[0] for row in result.fetchall()]
 
                 if inserted_ids:
-                    # 使用 DISTINCT 防止重试时重复计数
+                    distinct_ids = list(set(inserted_ids))
                     await session.execute(
                         text("""
                             UPDATE images
                             SET score_count = COALESCE(score_count, 0) + 1
-                            WHERE id IN (SELECT DISTINCT unnest(:ids))
+                            WHERE id = ANY(:ids)
                         """),
-                        {"ids": list(set(inserted_ids))}
+                        {"ids": distinct_ids}
                     )
 
                 await session.commit()
-
-                pipe = redis.pipeline()
-                for r in records:
-                    pipe.sadd(f"user:{r['user_id']}:scored", str(r["image_id"]))
-                await pipe.execute()
 
         except Exception as e:
             await redis.lpush("score_queue", *items)

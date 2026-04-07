@@ -81,7 +81,9 @@ const setScore = async (id, dim, val) => {
 
 const submitAndAdvance = async (id) => {
   try {
-    await scoreStore.submitScore(id, scores[id].aesthetic, scores[id].completeness)
+    const ok = await scoreStore.submitScore(id, scores[id].aesthetic, scores[id].completeness)
+    if (!ok) return
+
     if (currentIndex.value < images.value.length - 1) {
       await userStore.fetchStats()
       setTimeout(() => currentIndex.value++, 600)
