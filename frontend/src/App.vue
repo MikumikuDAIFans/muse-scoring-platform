@@ -231,6 +231,12 @@ watch(currentPage, async (page) => {
   initTurnstile()
 })
 
+watch(turnstileWidget, async (widgetEl) => {
+  if (!widgetEl || currentPage.value !== 'welcome' || !turnstileSiteKey.value) return
+  await nextTick()
+  initTurnstile()
+})
+
 onUnmounted(() => {
   if (turnstileWidgetId && window.turnstile) {
     window.turnstile.remove(turnstileWidgetId)
