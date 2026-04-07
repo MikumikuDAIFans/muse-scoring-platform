@@ -58,7 +58,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useUserStore } from './stores/user'
 import api from './api'
 import LoginPage from './components/LoginPage.vue'
@@ -90,8 +90,53 @@ onMounted(() => {
 })
 
 function initTurnstile() {
-  // 简化：直接设置ready，不依赖外部验证服务
-  turnstileReady.value = true
+  if (!turnstileSiteKey.value || currentPage.value !== 'welcome') {
+    turnstileReady.value = true
+    return
+  }
+
+  turnstileReady.value = false
+
+  if (window.turnstile) {
+    renderTurnstile()
+    return
+  }
+
+  const timer = window.setInterval(() => {
+    if (window.turnstile) {
+      window.clearInterval(timer)
+      renderTurnstile()
+    }
+  }, 200)
+
+  window.setTimeout(() => window.clearInterval(timer), 10000)
+}
+
+function renderTurnstile() {
+  if (!window.turnstile || !turnstileWidget.value || currentPage.value !== 'welcome') return
+
+  if (turnstileWidgetId) {
+    window.turnstile.remove(turnstileWidgetId)
+    turnstileWidgetId = null
+  }
+
+  turnstileWidgetId = window.turnstile.render(turnstileWidget.value, {
+    sitekey: turnstileSiteKey.value,
+    theme: 'light',
+    size: 'normal',
+    callback: (token) => {
+      turnstileToken.value = token
+      turnstileReady.value = true
+    },
+    'expired-callback': () => {
+      turnstileToken.value = ''
+      turnstileReady.value = false
+    },
+    'error-callback': () => {
+      turnstileToken.value = ''
+      turnstileReady.value = false
+    },
+  })
 }
 
 function onLoginSuccess() {
@@ -99,7 +144,7 @@ function onLoginSuccess() {
 }
 
 function startScoring() {
-  if (!turnstileReady.value && !turnstileToken.value) {
+  if (turnstileSiteKey.value && (!turnstileReady.value || !turnstileToken.value)) {
     return
   }
   isLoading.value = true
@@ -150,16 +195,14 @@ function onNoMoreImages(msg) {
 
 function startAnother() {
   currentPage.value = 'welcome'
-  // 直接设置ready，不依赖Turnstile
-  turnstileReady.value = true
   turnstileToken.value = ''
+  turnstileReady.value = !turnstileSiteKey.value
 }
 
 function goWelcome() {
   currentPage.value = 'welcome'
-  // 直接设置ready，不依赖Turnstile
-  turnstileReady.value = true
   turnstileToken.value = ''
+  turnstileReady.value = !turnstileSiteKey.value
 }
 
 function doLogout() {
@@ -168,6 +211,14 @@ function doLogout() {
   turnstileToken.value = ''
   turnstileReady.value = true
 }
+
+watch(currentPage, async (page) => {
+  if (page !== 'welcome' || !turnstileSiteKey.value) return
+  turnstileToken.value = ''
+  turnstileReady.value = false
+  await nextTick()
+  initTurnstile()
+})
 
 onUnmounted(() => {
   if (turnstileWidgetId && window.turnstile) {
