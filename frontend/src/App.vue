@@ -14,14 +14,11 @@
         
         <!-- Turnstile Widget -->
         <div class="turnstile-container" v-if="turnstileSiteKey">
-          <div 
-            class="cf-turnstile" 
-            :data-sitekey="turnstileSiteKey"
-            data-theme="light"
-            data-size="normal"
-            ref="turnstileWidget"
-          ></div>
+          <div ref="turnstileWidget" class="cf-turnstile"></div>
         </div>
+        <p v-if="turnstileSiteKey && !turnstileReady" class="hint-text turnstile-hint">
+          请先完成人机验证，再开始本轮打分
+        </p>
         
         <button @click="startScoring" class="tf-btn" :disabled="isLoading">
           <span v-if="isLoading">⏳ 正在召唤图片酱...</span>
@@ -32,7 +29,7 @@
         </div>
       </div>
     </div>
-    <ScoreCard v-else-if="currentPage === 'scoring'" ref="scoreCardRef" @batch-complete="onBatchComplete" @no-more-images="onNoMoreImages" @batch-loaded="onBatchLoaded" key="scoring" />
+    <ScoreCard v-else-if="currentPage === 'scoring'" ref="scoreCardRef" @batch-complete="onBatchComplete" @no-more-images="onNoMoreImages" key="scoring" />
     <div v-else-if="currentPage === 'done'" class="done-overlay" key="done">
       <div class="done-content text-center">
         <div class="gift-icon">🎁</div>
@@ -271,5 +268,10 @@ body{font-family:'Nunito','PingFang SC','Microsoft YaHei',sans-serif;background:
 }
 .turnstile-container :deep(.cf-turnstile) {
   transform-origin: center center;
+}
+.turnstile-hint {
+  margin-top: -0.5rem;
+  margin-bottom: 1rem;
+  color: #ff758c;
 }
 </style>
