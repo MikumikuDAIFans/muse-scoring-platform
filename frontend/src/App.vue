@@ -66,6 +66,7 @@ const userStore = useUserStore()
 const scoreCardRef = ref(null)
 const currentPage = ref('login')
 const isLoading = ref(false)
+const pendingBatchImages = ref(null)
 const turnstileToken = ref('')
 const turnstileReady = ref(true)
 const turnstileWidget = ref(null)
@@ -184,10 +185,8 @@ async function loadBatchAndNavigate(token) {
     }
     
     // 有图片才进入打分页面
+    pendingBatchImages.value = res.images
     currentPage.value = 'scoring'
-    // 等待ScoreCard组件挂载后再传递数据
-    await nextTick()
-    scoreCardRef.value?.loadBatchFromParent(res.images)
   } catch (e) {
     console.error('Batch load error:', e)
     isLoading.value = false
@@ -235,6 +234,13 @@ watch(turnstileWidget, async (widgetEl) => {
   if (!widgetEl || currentPage.value !== 'welcome' || !turnstileSiteKey.value) return
   await nextTick()
   initTurnstile()
+})
+
+watch(scoreCardRef, async (card) => {
+  if (!card || currentPage.value !== 'scoring' || !pendingBatchImages.value?.length) return
+  await nextTick()
+  card.loadBatchFromParent(pendingBatchImages.value)
+  pendingBatchImages.value = null
 })
 
 onUnmounted(() => {
