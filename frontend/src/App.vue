@@ -72,6 +72,7 @@ const turnstileReady = ref(true)
 const turnstileWidget = ref(null)
 const noMoreMsg = ref('')
 let turnstileWidgetId = null
+let turnstileInitTimer = null
 
 // Turnstile Site Key (从环境变量读取，生产环境必填)
 const turnstileSiteKey = computed(() => {
@@ -95,8 +96,13 @@ function initTurnstile() {
 
   turnstileReady.value = false
 
+  if (turnstileInitTimer) {
+    window.clearTimeout(turnstileInitTimer)
+    turnstileInitTimer = null
+  }
+
   if (window.turnstile) {
-    renderTurnstile()
+    turnstileInitTimer = window.setTimeout(() => renderTurnstile(), 150)
     return
   }
 
@@ -122,6 +128,10 @@ function initTurnstile() {
 
 function renderTurnstile() {
   if (!window.turnstile || !turnstileWidget.value || currentPage.value !== 'welcome') return
+
+  if (turnstileWidget.value.querySelector('iframe')) {
+    return
+  }
 
   if (turnstileWidgetId) {
     window.turnstile.remove(turnstileWidgetId)
@@ -206,12 +216,20 @@ function onNoMoreImages(msg) {
 function startAnother() {
   currentPage.value = 'welcome'
   turnstileToken.value = ''
+  if (turnstileWidgetId && window.turnstile) {
+    window.turnstile.remove(turnstileWidgetId)
+    turnstileWidgetId = null
+  }
   turnstileReady.value = !turnstileSiteKey.value
 }
 
 function goWelcome() {
   currentPage.value = 'welcome'
   turnstileToken.value = ''
+  if (turnstileWidgetId && window.turnstile) {
+    window.turnstile.remove(turnstileWidgetId)
+    turnstileWidgetId = null
+  }
   turnstileReady.value = !turnstileSiteKey.value
 }
 
@@ -232,8 +250,10 @@ watch(currentPage, async (page) => {
 
 watch(turnstileWidget, async (widgetEl) => {
   if (!widgetEl || currentPage.value !== 'welcome' || !turnstileSiteKey.value) return
-  await nextTick()
-  initTurnstile()
+  if (!turnstileWidgetId) {
+    await nextTick()
+    initTurnstile()
+  }
 })
 
 watch(scoreCardRef, async (card) => {
@@ -244,6 +264,9 @@ watch(scoreCardRef, async (card) => {
 })
 
 onUnmounted(() => {
+  if (turnstileInitTimer) {
+    window.clearTimeout(turnstileInitTimer)
+  }
   if (turnstileWidgetId && window.turnstile) {
     window.turnstile.remove(turnstileWidgetId)
   }
