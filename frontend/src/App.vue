@@ -99,6 +99,16 @@ function initTurnstile() {
     return
   }
 
+  const existingScript = document.querySelector('script[src="https://challenges.cloudflare.com/turnstile/v0/api.js"]')
+  if (!existingScript) {
+    const script = document.createElement('script')
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+    script.async = true
+    script.defer = true
+    script.onload = () => renderTurnstile()
+    document.head.appendChild(script)
+  }
+
   const timer = window.setInterval(() => {
     if (window.turnstile) {
       window.clearInterval(timer)
@@ -136,8 +146,12 @@ function renderTurnstile() {
   })
 }
 
-function onLoginSuccess() {
+async function onLoginSuccess() {
   currentPage.value = userStore.role === 'admin' ? 'admin' : 'welcome'
+  if (currentPage.value === 'welcome') {
+    await nextTick()
+    initTurnstile()
+  }
 }
 
 function startScoring() {
