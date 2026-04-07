@@ -6,7 +6,14 @@ import os
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@pgbouncer:6432/scoring")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 
-engine = create_async_engine(DATABASE_URL, pool_size=20, max_overflow=10)
+engine = create_async_engine(
+    DATABASE_URL,
+    pool_size=20,
+    max_overflow=10,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_use_lifo=True,
+)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 # 全局redis连接
