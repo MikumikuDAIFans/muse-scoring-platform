@@ -28,8 +28,8 @@ async def get_image_batch(
     # 获取尚未被任何人打分的图片（score_count = 0 表示无人标注过）
     query = """
         SELECT id, r2_url FROM images
-        WHERE deleted = FALSE
-        AND score_count = 0
+        WHERE COALESCE(deleted, FALSE) = FALSE
+        AND COALESCE(score_count, 0) = 0
         ORDER BY RANDOM()
         LIMIT :limit
     """

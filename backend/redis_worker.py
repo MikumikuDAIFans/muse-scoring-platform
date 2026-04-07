@@ -55,7 +55,8 @@ async def process_scores():
                     # 使用 DISTINCT 防止重试时重复计数
                     await session.execute(
                         text("""
-                            UPDATE images SET score_count = score_count + 1
+                            UPDATE images
+                            SET score_count = COALESCE(score_count, 0) + 1
                             WHERE id IN (SELECT DISTINCT unnest(:ids))
                         """),
                         {"ids": list(set(inserted_ids))}

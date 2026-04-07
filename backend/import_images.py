@@ -66,8 +66,15 @@ async def import_images(folder_path: str, db_url: str):
                 r2_url = f"http://localhost:8080/images/{filename}"
             
             await conn.execute(
-                "INSERT INTO images (id, r2_url) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
-                image_id, r2_url
+                """
+                INSERT INTO images (id, r2_url, score_count, deleted)
+                VALUES ($1, $2, 0, FALSE)
+                ON CONFLICT (id) DO UPDATE
+                SET r2_url = EXCLUDED.r2_url,
+                    score_count = COALESCE(images.score_count, 0),
+                    deleted = COALESCE(images.deleted, FALSE)
+                """,
+                image_id, r2_url,
             )
             image_id += 1
             if image_id % 10 == 0:

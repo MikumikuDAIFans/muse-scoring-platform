@@ -16,7 +16,7 @@ async def admin_stats(
     r: aioredis.Redis = Depends(get_redis),
 ):
     total_images = (await db.execute(
-        text("SELECT COUNT(*) FROM images WHERE deleted = FALSE")
+        text("SELECT COUNT(*) FROM images WHERE COALESCE(deleted, FALSE) = FALSE")
     )).scalar()
     # 已标注的不重复图片数（至少被一个用户打过分的图片）
     annotated_images = (await db.execute(
