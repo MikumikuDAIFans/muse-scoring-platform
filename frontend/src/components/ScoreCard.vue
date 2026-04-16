@@ -4,150 +4,145 @@
       <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
     </div>
 
-    <div class="slides-viewport" ref="viewportRef">
-      <div class="slides-track" :style="{ transform: `translateY(-${currentIndex * 100}%)`, transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)' }">
-        
-        <div class="slide" v-for="(img, idx) in images" :key="img.id" :data-index="idx">
-          <div class="slide-inner">
-            <div class="img-panel">
-              <img :src="img.url" :alt="'Image ' + img.id" class="main-img" @error="onImgErr" />
-            </div>
-            <div class="rate-panel">
-              <div class="rate-inner">
-                <div class="badge">🐾 进度 {{ idx + 1 }} / {{ images.length }}</div>
-                
-                <div class="rate-section">
-                  <h2 class="rate-title">1. 这张图片的<span class="text-pink bold"> 美学表现 </span>如何？✨</h2>
-                  <div class="bubbles">
-                    <div v-for="n in 10" :key="'a'+n" @click="setScore(img.id, 'aesthetic', n)" class="bubble" :class="{ on: scores[img.id]?.aesthetic === n }">{{ n }}</div>
-                  </div>
-                  <div class="labels"><span>辣眼睛 (ಥ﹏ಥ)</span><span>神仙画作！(✧ω✧)</span></div>
-                </div>
+    <div class="task-shell" v-if="task">
+      <div class="task-inner">
+        <div class="img-panel">
+          <img :src="task.image_url" :alt="'Image ' + task.image_id" class="main-img" @error="onImgErr" />
+        </div>
 
-                <div class="rate-section">
-                  <h2 class="rate-title">2. 这张图片的<span class="text-pink2 bold"> 细节完成度 </span>如何？🖌️</h2>
-                  <div class="bubbles">
-                    <div v-for="n in 10" :key="'c'+n" @click="setScore(img.id, 'completeness', n)" class="bubble" :class="{ on: scores[img.id]?.completeness === n }">{{ n }}</div>
-                  </div>
-                  <div class="labels"><span>粗糙线稿 (´-ω-`)</span><span>细节拉满！(≧∇≦)/</span></div>
-                </div>
+        <div class="rate-panel">
+          <div class="rate-inner">
+            <div class="badge">当前任务 #{{ task.task_id }}</div>
 
-                <div class="status-bar">
-                  <div v-if="fullyRated(img.id)" class="ok-msg">❤️ 收到啦，自动前往下一张咻咻~</div>
-                  <div v-else-if="halfRated(img.id)" class="hint-msg">再戳一下另一个分数就可以啦 👆</div>
+            <div class="rate-section">
+              <h2 class="rate-title">1. 这张图片的 <span class="text-pink bold">美学表现</span> 如何？</h2>
+              <div class="bubbles">
+                <div
+                  v-for="n in 10"
+                  :key="'a' + n"
+                  class="bubble"
+                  :class="{ on: score.aesthetic === n }"
+                  @click="setScore('aesthetic', n)"
+                >
+                  {{ n }}
                 </div>
               </div>
+              <div class="labels"><span>辣眼睛</span><span>神仙画作</span></div>
+            </div>
+
+            <div class="rate-section">
+              <h2 class="rate-title">2. 这张图片的 <span class="text-pink2 bold">细节完成度</span> 如何？</h2>
+              <div class="bubbles">
+                <div
+                  v-for="n in 10"
+                  :key="'c' + n"
+                  class="bubble"
+                  :class="{ on: score.completeness === n }"
+                  @click="setScore('completeness', n)"
+                >
+                  {{ n }}
+                </div>
+              </div>
+              <div class="labels"><span>粗糙线稿</span><span>细节拉满</span></div>
+            </div>
+
+            <div class="status-bar">
+              <div v-if="isSubmitting" class="ok-msg">提交中，马上切到下一张...</div>
+              <div v-else-if="fullyRated" class="ok-msg">收到啦，准备前往下一张</div>
+              <div v-else-if="halfRated" class="hint-msg">再选另一个维度的分数就可以提交</div>
+              <div v-else-if="scoreStore.prefetching" class="hint-msg">后台正在准备下一张图片</div>
             </div>
           </div>
         </div>
-
       </div>
     </div>
 
-    <div class="brand">🌱 Muse</div>
+    <div class="brand">Muse</div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useScoreStore } from '../stores/score'
-import api from '../api'
 
-const emit = defineEmits(['batch-complete', 'no-more-images', 'batch-loaded'])
+const emit = defineEmits(['no-more-images'])
 
 const userStore = useUserStore()
 const scoreStore = useScoreStore()
-const images = ref([])
-const currentIndex = ref(0)
-const scores = reactive({})
-const isLoading = ref(false)
+const score = reactive({ aesthetic: null, completeness: null })
 
-const progressPercent = computed(() => {
-  if (!images.value.length) return 0
-  return ((currentIndex.value + 1) / images.value.length) * 100
-})
+const task = computed(() => scoreStore.currentTask)
+const fullyRated = computed(() => score.aesthetic > 0 && score.completeness > 0)
+const halfRated = computed(() => !!(score.aesthetic || score.completeness))
+const isSubmitting = computed(() => scoreStore.submitting)
+const progressPercent = computed(() => (scoreStore.nextTask ? 100 : 55))
 
-const fullyRated = (id) => { const s = scores[id]; return s && s.aesthetic > 0 && s.completeness > 0 }
-const halfRated = (id) => { const s = scores[id]; return s && (s.aesthetic || s.completeness) }
+function resetScoreState() {
+  score.aesthetic = null
+  score.completeness = null
+}
 
-const setScore = async (id, dim, val) => {
-  if (!scores[id]) scores[id] = { aesthetic: null, completeness: null }
-  scores[id][dim] = val
-  if (fullyRated(id)) {
-    await submitAndAdvance(id)
+async function ensureNextTask() {
+  if (!task.value) return
+  const nextTask = await scoreStore.prefetchNextTask()
+  if (!nextTask && !scoreStore.message && !scoreStore.prefetching) {
+    // No-op: the current task can still be completed.
   }
 }
 
-const submitAndAdvance = async (id) => {
-  try {
-    const ok = await scoreStore.submitScore(id, scores[id].aesthetic, scores[id].completeness)
-    if (!ok) return
-
-    if (currentIndex.value < images.value.length - 1) {
-      await userStore.fetchStats()
-      setTimeout(() => currentIndex.value++, 600)
-    } else {
-      setTimeout(async () => {
-        await userStore.fetchStats()
-        emit('batch-complete')
-      }, 600)
-    }
-  } catch (e) {
-    console.error('Score submit error:', e)
+async function setScore(field, value) {
+  if (!task.value || scoreStore.submitting) return
+  score[field] = value
+  if (fullyRated.value) {
+    await submitAndAdvance()
   }
 }
 
-const loadBatchFromParent = (batchImages) => {
-  images.value = batchImages
-  currentIndex.value = 0
-  images.value.forEach(img => {
-    scores[img.id] = { aesthetic: null, completeness: null }
+async function submitAndAdvance() {
+  if (!task.value) return
+  const ok = await scoreStore.submitTaskScore({
+    taskId: task.value.task_id,
+    imageId: task.value.image_id,
+    aesthetic: score.aesthetic,
+    completeness: score.completeness,
   })
-  // Preload all images
-  images.value.forEach(img => {
-    const imgEl = new Image()
-    imgEl.src = img.url
-  })
-}
+  if (!ok) return
 
-const loadBatch = async (turnstileToken = null) => {
-  isLoading.value = true
-  try {
-    const payload = turnstileToken ? { turnstile_token: turnstileToken } : {}
-    const res = await api.post('/images/batch', payload)
-    images.value = res.images || []
-    
-    // 如果没有更多图片，通知父组件
-    if (images.value.length === 0) {
-      emit('no-more-images', res.message || '所有图片已完成标注')
-      return
-    }
-    
-    // 图片加载成功，通知父组件可以进入打分页面
-    emit('batch-loaded', images.value.length)
-    
-    currentIndex.value = 0
-    images.value.forEach(img => {
-      scores[img.id] = { aesthetic: null, completeness: null }
-    })
-    // Preload all images in the batch
-    images.value.forEach(img => {
-      const imgEl = new Image()
-      imgEl.src = img.url
-    })
-  } catch (e) {
-    console.error('Batch load error:', e)
-  } finally {
-    isLoading.value = false
+  userStore.incrementStats()
+
+  const nextTask = scoreStore.promoteNextTask()
+  if (nextTask) {
+    resetScoreState()
+    await ensureNextTask()
+    return
   }
+
+  const fallbackTask = await scoreStore.fetchNextTask()
+  if (!fallbackTask) {
+    scoreStore.clearTasks()
+    emit('no-more-images', scoreStore.message || '所有图片都已完成标注')
+    return
+  }
+
+  scoreStore.currentTask = fallbackTask
+  resetScoreState()
+  await ensureNextTask()
 }
 
-const onImgErr = (e) => {
-  e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Crect fill='%23ffe4e6' width='200' height='200'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23ff758c' font-size='14'%3EImage%3C/text%3E%3C/svg%3E"
+function onImgErr(event) {
+  event.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Crect fill='%23ffe4e6' width='200' height='200'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23ff758c' font-size='14'%3EImage%3C/text%3E%3C/svg%3E"
 }
 
-defineExpose({ loadBatch, loadBatchFromParent })
+watch(
+  task,
+  async (nextTask) => {
+    resetScoreState()
+    if (!nextTask) return
+    await ensureNextTask()
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -167,33 +162,20 @@ defineExpose({ loadBatch, loadBatchFromParent })
   background: #ffe4e6;
   z-index: 100;
 }
+
 .progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #ff758c, #ff7eb3);
-  transition: width 0.5s ease;
+  transition: width 0.4s ease;
   border-radius: 0 4px 4px 0;
 }
 
-.slides-viewport {
+.task-shell {
   position: fixed;
-  inset: 0;
-  top: 6px;
-  overflow: hidden;
+  inset: 6px 0 0;
 }
-.slides-track {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-}
-.slide {
-  flex: 0 0 100%;
-  width: 100%;
-  height: 100%;
-  min-height: 100%;
-  overflow: hidden;
-}
-.slide-inner {
+
+.task-inner {
   display: flex;
   width: 100%;
   height: 100%;
@@ -208,6 +190,7 @@ defineExpose({ loadBatch, loadBatchFromParent })
   align-items: center;
   overflow: hidden;
 }
+
 .main-img {
   max-width: 100%;
   max-height: 100%;
@@ -226,6 +209,7 @@ defineExpose({ loadBatch, loadBatchFromParent })
   padding: 30px 40px;
   overflow-y: auto;
 }
+
 .rate-inner {
   width: 100%;
   max-width: 580px;
@@ -242,6 +226,7 @@ defineExpose({ loadBatch, loadBatchFromParent })
   border-radius: 20px;
   margin-bottom: 16px;
 }
+
 .rate-title {
   font-size: 20px;
   line-height: 1.4;
@@ -249,16 +234,19 @@ defineExpose({ loadBatch, loadBatchFromParent })
   margin-bottom: 20px;
   color: #5d4a4a;
 }
+
 .rate-section {
   margin-bottom: 36px;
   width: 100%;
 }
+
 .bubbles {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
 }
+
 .bubble {
   width: 40px;
   height: 40px;
@@ -276,17 +264,20 @@ defineExpose({ loadBatch, loadBatchFromParent })
   font-family: inherit;
   user-select: none;
 }
+
 .bubble:hover {
   border-color: #ff758c;
   transform: scale(1.1);
 }
+
 .bubble.on {
   background: linear-gradient(135deg, #ff758c, #ff7eb3);
   color: #fff;
   border-color: transparent;
   transform: scale(1.15);
-  box-shadow: 0 4px 12px rgba(255,117,140,0.3);
+  box-shadow: 0 4px 12px rgba(255, 117, 140, 0.3);
 }
+
 .labels {
   display: flex;
   justify-content: space-between;
@@ -299,11 +290,13 @@ defineExpose({ loadBatch, loadBatchFromParent })
   margin-top: 24px;
   min-height: 24px;
 }
+
 .ok-msg {
   color: #ff758c;
   font-weight: 700;
   font-size: 15px;
 }
+
 .hint-msg {
   color: #8a7a7a;
   font-weight: 600;
@@ -324,27 +317,31 @@ defineExpose({ loadBatch, loadBatchFromParent })
   font-size: 13px;
   font-weight: 700;
   color: #ff758c;
-  box-shadow: 0 2px 12px rgba(255,117,140,0.15);
+  box-shadow: 0 2px 12px rgba(255, 117, 140, 0.15);
   z-index: 50;
 }
 
 @media (max-width: 768px) {
-  .slide-inner {
+  .task-inner {
     flex-direction: column;
   }
+
   .img-panel {
     flex: none;
     height: 40vh;
     width: 100%;
   }
+
   .rate-panel {
     flex: 1;
     width: 100%;
     padding: 20px;
   }
+
   .rate-inner {
     max-width: 100%;
   }
+
   .bubble {
     width: 34px;
     height: 34px;

@@ -21,3 +21,14 @@ class ScoreRequest(BaseModel):
     image_id: int
     aesthetic_score: int
     completeness_score: int
+
+
+class NextTaskRequest(BaseModel):
+    turnstile_token: Optional[str] = ""
+    current_task_id: Optional[int] = None
+
+
+class TaskScoreRequest(BaseModel):
+    image_id: int
+    aesthetic_score: int
+    completeness_score: int

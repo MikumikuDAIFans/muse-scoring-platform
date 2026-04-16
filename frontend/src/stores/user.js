@@ -79,5 +79,22 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  return { token, username, role, isLoggedIn, stats, login, register, logout, loadToken, fetchStats }
+  function incrementStats() {
+    stats.total_scores += 1
+    stats.today_scores += 1
+  }
+
+  return {
+    token,
+    username,
+    role,
+    isLoggedIn,
+    stats,
+    login,
+    register,
+    logout,
+    loadToken,
+    fetchStats,
+    incrementStats,
+  }
 })

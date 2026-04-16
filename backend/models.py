@@ -24,9 +24,24 @@ class User(Base):
 class Image(Base):
     __tablename__ = "images"
     id = Column(BigInteger, primary_key=True)
-    r2_url = Column(Text, nullable=False)
+    r2_url = Column(Text, nullable=True)
+    object_key = Column(Text, nullable=True)
+    public_url = Column(Text, nullable=True)
+    status = Column(String(16), default="pending", nullable=False)
     score_count = Column(Integer, default=0)
     deleted = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AnnotationTask(Base):
+    __tablename__ = "annotation_tasks"
+    id = Column(BigInteger, primary_key=True)
+    image_id = Column(BigInteger, ForeignKey("images.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    status = Column(String(16), nullable=False)
+    assigned_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -35,6 +50,7 @@ class Score(Base):
     id = Column(BigInteger, primary_key=True)
     image_id = Column(BigInteger, ForeignKey("images.id"))
     user_id = Column(BigInteger, ForeignKey("users.id"))
+    task_id = Column(BigInteger, nullable=True)
     aesthetic_score = Column(Integer, CheckConstraint("aesthetic_score BETWEEN 1 AND 10"))
     completeness_score = Column(Integer, CheckConstraint("completeness_score BETWEEN 1 AND 10"))
     submitted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

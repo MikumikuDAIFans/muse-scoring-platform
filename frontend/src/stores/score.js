@@ -1,60 +1,101 @@
 import { defineStore } from 'pinia'
-import { ref, reactive } from 'vue'
+import { ref } from 'vue'
 import api from '../api'
 
-export const useScoreStore = defineStore('score', () => {
-  const images = ref([])
-  const currentIndex = ref(0)
-  const loading = ref(false)
-  const message = ref('')
-  const scoredIds = ref(new Set())
+function preloadImage(url) {
+  if (!url) return
+  const img = new Image()
+  img.src = url
+}
 
-  async function fetchBatch(turnstileToken = null) {
+export const useScoreStore = defineStore('score', () => {
+  const currentTask = ref(null)
+  const nextTask = ref(null)
+  const loading = ref(false)
+  const prefetching = ref(false)
+  const submitting = ref(false)
+  const message = ref('')
+
+  async function fetchNextTask({ turnstileToken = null, currentTaskId = null } = {}) {
     loading.value = true
     try {
-      const payload = turnstileToken ? { turnstile_token: turnstileToken } : {}
-      const res = await api.post('/images/batch', payload)
-      images.value = res.images || []
-      currentIndex.value = 0
+      const payload = {}
+      if (turnstileToken) payload.turnstile_token = turnstileToken
+      if (currentTaskId != null) payload.current_task_id = currentTaskId
+      const res = await api.post('/tasks/next', payload)
       if (res.message) message.value = res.message
+      return res.task || null
     } catch (err) {
-      message.value = err.detail || '获取图片失败'
+      message.value = err.detail || '获取任务失败'
+      return null
     } finally {
       loading.value = false
     }
   }
 
-  async function submitScore(imageId, aesthetic, completeness) {
+  async function startSession(turnstileToken = null) {
+    const task = await fetchNextTask({ turnstileToken })
+    currentTask.value = task
+    nextTask.value = null
+    return task
+  }
+
+  async function prefetchNextTask() {
+    if (!currentTask.value || nextTask.value || prefetching.value) return nextTask.value
+    prefetching.value = true
     try {
-      await api.post('/score', {
+      const task = await fetchNextTask({ currentTaskId: currentTask.value.task_id })
+      if (task && task.task_id !== currentTask.value.task_id) {
+        nextTask.value = task
+        preloadImage(task.image_url)
+      }
+      return nextTask.value
+    } finally {
+      prefetching.value = false
+    }
+  }
+
+  async function submitTaskScore({ taskId, imageId, aesthetic, completeness }) {
+    submitting.value = true
+    try {
+      await api.post(`/tasks/${taskId}/submit`, {
         image_id: imageId,
         aesthetic_score: aesthetic,
         completeness_score: completeness,
       })
-      scoredIds.value.add(imageId)
       return true
     } catch (err) {
       message.value = err.detail || '提交失败'
       return false
+    } finally {
+      submitting.value = false
     }
   }
 
-  async function loadScoredIds() {
-    try {
-      const res = await api.get('/my-scores')
-      scoredIds.value = new Set(res.scored_image_ids)
-    } catch {
-      scoredIds.value = new Set()
-    }
+  function promoteNextTask() {
+    currentTask.value = nextTask.value
+    nextTask.value = null
+    return currentTask.value
   }
 
-  const currentImage = () => images.value[currentIndex.value] || null
-  const hasNext = () => currentIndex.value < images.value.length - 1
-  const nextImage = () => { if (hasNext()) currentIndex.value++ }
+  function clearTasks() {
+    currentTask.value = null
+    nextTask.value = null
+    message.value = ''
+  }
 
   return {
-    images, currentIndex, loading, message, scoredIds,
-    fetchBatch, submitScore, loadScoredIds,
-    currentImage, hasNext, nextImage
+    currentTask,
+    nextTask,
+    loading,
+    prefetching,
+    submitting,
+    message,
+    startSession,
+    fetchNextTask,
+    prefetchNextTask,
+    submitTaskScore,
+    promoteNextTask,
+    clearTasks,
   }
 })

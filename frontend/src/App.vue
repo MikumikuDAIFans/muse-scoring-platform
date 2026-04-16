@@ -1,53 +1,51 @@
 <template>
   <Transition name="fade" mode="out-in">
     <LoginPage v-if="currentPage === 'login'" @login-success="onLoginSuccess" />
+
     <AdminDashboard v-else-if="currentPage === 'admin'" @logout="doLogout" key="admin" />
+
     <div v-else-if="currentPage === 'welcome'" class="welcome-overlay" key="welcome">
       <div class="welcome-content text-center">
         <div class="emoji-bounce">🎯</div>
-        <h1 class="title-welcome">欢迎来到打分环节！</h1>
+        <h1 class="title-welcome">欢迎来到打分环节</h1>
         <p class="subtitle">
-          Hello, <span class="text-pink">{{ userStore.username }}</span>！<br>
-          已打 <span class="text-pink">{{ userStore.stats.total_scores }}</span> 次分，今天 <span class="text-pink">{{ userStore.stats.today_scores }}</span> 次~
+          Hello, <span class="text-pink">{{ userStore.username }}</span><br>
+          已打 <span class="text-pink">{{ userStore.stats.total_scores }}</span> 次分，今天
+          <span class="text-pink">{{ userStore.stats.today_scores }}</span> 次
         </p>
-        <p class="hint-text">本轮共 10 张图片，请从"美学"和"完成度"进行评分哦~</p>
-        
-        <!-- Turnstile Widget -->
+        <p class="hint-text">每次只展示 1 张图，后台最多预取 1 张下一张，提交后会立即切换。</p>
+
         <div class="turnstile-container" v-if="turnstileSiteKey">
           <div ref="turnstileWidget" class="cf-turnstile"></div>
         </div>
         <p v-if="turnstileSiteKey && !turnstileReady" class="hint-text turnstile-hint">
-          请先完成人机验证，再开始本轮打分
+          请先完成人机验证，再开始打分
         </p>
-        
+
         <button @click="startScoring" class="tf-btn" :disabled="isLoading">
-          <span v-if="isLoading">⏳ 正在召唤图片酱...</span>
-          <span v-else>开始本轮打分 🚀</span>
+          <span v-if="isLoading">正在准备图片...</span>
+          <span v-else>开始打分</span>
         </button>
+
         <div class="logout-area">
           <button @click="doLogout" class="logout-btn">退出登录</button>
         </div>
       </div>
     </div>
-    <ScoreCard v-else-if="currentPage === 'scoring'" ref="scoreCardRef" @batch-complete="onBatchComplete" @no-more-images="onNoMoreImages" key="scoring" />
-    <div v-else-if="currentPage === 'done'" class="done-overlay" key="done">
-      <div class="done-content text-center">
-        <div class="gift-icon">🎁</div>
-        <h1 class="title-done">本轮搞定啦！🎉</h1>
-        <p class="subtitle">评分已飞进数据库，超感谢你的帮忙！继续挑战下一批吗？</p>
-        <div class="done-actions">
-          <button @click="startAnother" class="tf-btn">再来一轮！ 🚀</button>
-          <button @click="goWelcome" class="rest-btn">休息一下 🍵</button>
-        </div>
-      </div>
-    </div>
+
+    <ScoreCard
+      v-else-if="currentPage === 'scoring'"
+      @no-more-images="onNoMoreImages"
+      key="scoring"
+    />
+
     <div v-else-if="currentPage === 'all-done'" class="done-overlay" key="all-done">
       <div class="done-content text-center">
         <div class="gift-icon">🏆</div>
-        <h1 class="title-done">所有图片都已完成标注！🎉</h1>
-        <p class="subtitle">{{ noMoreMsg || '感谢你的辛勤付出，数据集标注已经全部完成啦~' }}</p>
+        <h1 class="title-done">所有图片都已完成标注</h1>
+        <p class="subtitle">{{ noMoreMsg || '感谢你的辛勤付出，数据集标注已经全部完成。' }}</p>
         <div class="done-actions">
-          <button @click="goWelcome" class="rest-btn">返回首页 🍵</button>
+          <button @click="goWelcome" class="rest-btn">返回首页</button>
         </div>
       </div>
     </div>
@@ -55,38 +53,46 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUserStore } from './stores/user'
-import api from './api'
+import { useScoreStore } from './stores/score'
 import LoginPage from './components/LoginPage.vue'
 import ScoreCard from './components/ScoreCard.vue'
 import AdminDashboard from './components/AdminDashboard.vue'
 
 const userStore = useUserStore()
-const scoreCardRef = ref(null)
+const scoreStore = useScoreStore()
+
 const currentPage = ref('login')
 const isLoading = ref(false)
-const pendingBatchImages = ref(null)
 const turnstileToken = ref('')
 const turnstileReady = ref(true)
 const turnstileWidget = ref(null)
 const noMoreMsg = ref('')
+
 let turnstileWidgetId = null
 let turnstileInitTimer = null
+let statsRefreshTimer = null
 
-// Turnstile Site Key (从环境变量读取，生产环境必填)
-const turnstileSiteKey = computed(() => {
-  return import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
-})
+const turnstileSiteKey = computed(() => import.meta.env.VITE_TURNSTILE_SITE_KEY || '')
 
 onMounted(() => {
   userStore.loadToken()
   if (userStore.isLoggedIn) {
     currentPage.value = userStore.role === 'admin' ? 'admin' : 'welcome'
   }
-  // 初始化Turnstile
+  startStatsSync()
   initTurnstile()
 })
+
+function startStatsSync() {
+  if (statsRefreshTimer) window.clearInterval(statsRefreshTimer)
+  statsRefreshTimer = window.setInterval(() => {
+    if (userStore.isLoggedIn && userStore.role !== 'admin') {
+      userStore.fetchStats()
+    }
+  }, 60000)
+}
 
 function initTurnstile() {
   if (!turnstileSiteKey.value || currentPage.value !== 'welcome') {
@@ -129,9 +135,7 @@ function initTurnstile() {
 function renderTurnstile() {
   if (!window.turnstile || !turnstileWidget.value || currentPage.value !== 'welcome') return
 
-  if (turnstileWidget.value.querySelector('iframe')) {
-    return
-  }
+  if (turnstileWidget.value.querySelector('iframe')) return
 
   if (turnstileWidgetId) {
     window.turnstile.remove(turnstileWidgetId)
@@ -165,66 +169,41 @@ async function onLoginSuccess() {
   }
 }
 
-function startScoring() {
+async function startScoring() {
   if (turnstileSiteKey.value && (!turnstileReady.value || !turnstileToken.value)) {
     return
   }
+
   isLoading.value = true
-  // Capture token before resetting
+  scoreStore.clearTasks()
+
   const token = turnstileToken.value
-  // Reset turnstile for next batch
   if (turnstileWidgetId && window.turnstile) {
     window.turnstile.reset(turnstileWidgetId)
   }
   turnstileToken.value = ''
-  
-  // 直接在父组件中加载batch，不依赖ScoreCard组件
-  loadBatchAndNavigate(token)
-}
 
-async function loadBatchAndNavigate(token) {
   try {
-    const payload = token ? { turnstile_token: token } : {}
-    const res = await api.post('/images/batch', payload)
-    isLoading.value = false
-    
-    if (!res.images || res.images.length === 0) {
-      noMoreMsg.value = res.message || '所有图片已完成标注'
+    const task = await scoreStore.startSession(token)
+    if (!task) {
+      noMoreMsg.value = scoreStore.message || '所有图片都已完成标注'
       currentPage.value = 'all-done'
       return
     }
-    
-    // 有图片才进入打分页面
-    pendingBatchImages.value = res.images
     currentPage.value = 'scoring'
-  } catch (e) {
-    console.error('Batch load error:', e)
+  } finally {
     isLoading.value = false
   }
 }
 
-function onBatchComplete() {
-  currentPage.value = 'done'
-}
-
-function onNoMoreImages(msg) {
-  isLoading.value = false
-  noMoreMsg.value = msg
+function onNoMoreImages(message) {
+  noMoreMsg.value = message
   currentPage.value = 'all-done'
-}
-
-function startAnother() {
-  currentPage.value = 'welcome'
-  turnstileToken.value = ''
-  if (turnstileWidgetId && window.turnstile) {
-    window.turnstile.remove(turnstileWidgetId)
-    turnstileWidgetId = null
-  }
-  turnstileReady.value = !turnstileSiteKey.value
 }
 
 function goWelcome() {
   currentPage.value = 'welcome'
+  scoreStore.clearTasks()
   turnstileToken.value = ''
   if (turnstileWidgetId && window.turnstile) {
     window.turnstile.remove(turnstileWidgetId)
@@ -234,6 +213,7 @@ function goWelcome() {
 }
 
 function doLogout() {
+  scoreStore.clearTasks()
   userStore.logout()
   currentPage.value = 'login'
   turnstileToken.value = ''
@@ -256,17 +236,9 @@ watch(turnstileWidget, async (widgetEl) => {
   }
 })
 
-watch(scoreCardRef, async (card) => {
-  if (!card || currentPage.value !== 'scoring' || !pendingBatchImages.value?.length) return
-  await nextTick()
-  card.loadBatchFromParent(pendingBatchImages.value)
-  pendingBatchImages.value = null
-})
-
 onUnmounted(() => {
-  if (turnstileInitTimer) {
-    window.clearTimeout(turnstileInitTimer)
-  }
+  if (turnstileInitTimer) window.clearTimeout(turnstileInitTimer)
+  if (statsRefreshTimer) window.clearInterval(statsRefreshTimer)
   if (turnstileWidgetId && window.turnstile) {
     window.turnstile.remove(turnstileWidgetId)
   }
@@ -278,11 +250,9 @@ onUnmounted(() => {
 html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden}
 body{font-family:'Nunito','PingFang SC','Microsoft YaHei',sans-serif;background:#fff5f8;color:#5d4a4a;-webkit-font-smoothing:antialiased}
 
-/* Fade transition */
 .fade-enter-active,.fade-leave-active{transition:opacity .4s ease}
 .fade-enter-from,.fade-leave-to{opacity:0}
 
-/* Welcome overlay */
 .welcome-overlay{position:fixed;inset:0;display:flex;justify-content:center;align-items:center;background:#fff5f8;z-index:200}
 .welcome-content{padding:40px 20px;max-width:600px;width:100%}
 .text-center{text-align:center}
@@ -299,7 +269,6 @@ body{font-family:'Nunito','PingFang SC','Microsoft YaHei',sans-serif;background:
 .logout-btn:hover{color:#ff758c}
 .logout-area{margin-top:2rem;display:flex;justify-content:center}
 
-/* Done overlay */
 .done-overlay{position:fixed;inset:0;display:flex;justify-content:center;align-items:center;background:#fff5f8;z-index:200}
 .done-content{padding:40px 20px;max-width:600px;width:100%}
 .gift-icon{font-size:3rem;margin-bottom:1rem}
@@ -308,7 +277,6 @@ body{font-family:'Nunito','PingFang SC','Microsoft YaHei',sans-serif;background:
 @media(min-width:640px){.done-actions{flex-direction:row}}
 .rest-btn{padding:12px 24px;border:2px solid #ffe4e6;background:#fff;color:#ff758c;font-size:16px;font-weight:700;border-radius:14px;cursor:pointer;transition:all .3s;font-family:inherit}
 
-/* Turnstile Widget */
 .turnstile-container {
   display: flex;
   justify-content: center;

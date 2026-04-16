@@ -43,7 +43,8 @@ async def process_scores():
                     await session.execute(
                         text("""
                             UPDATE images
-                            SET score_count = COALESCE(score_count, 0) + 1
+                            SET score_count = COALESCE(score_count, 0) + 1,
+                                status = 'completed'
                             WHERE id = ANY(:ids)
                         """),
                         {"ids": distinct_ids}
