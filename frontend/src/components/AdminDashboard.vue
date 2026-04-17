@@ -150,11 +150,15 @@ async function refreshAll() {
 
 function downloadExport(format) {
   const token = localStorage.getItem('token')
-  const baseURL = import.meta.env.VITE_API_BASE_URL || ''
-  const query = `/api/export?format=${format}`
-  const url = `${baseURL}${query}`
+  const configuredBase = import.meta.env.VITE_API_BASE_URL || '/api'
+  const normalizedBase = configuredBase.endsWith('/')
+    ? configuredBase.slice(0, -1)
+    : configuredBase
+  const exportPath = normalizedBase.endsWith('/api')
+    ? `${normalizedBase}/export?format=${format}`
+    : `${normalizedBase}/api/export?format=${format}`
 
-  fetch(url, {
+  fetch(exportPath, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
     .then(async (response) => {
