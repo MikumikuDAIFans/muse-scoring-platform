@@ -49,7 +49,7 @@
         <div class="stat-card">
           <div class="stat-icon">📦</div>
           <div class="stat-value">{{ formatNum(stats.redis_queue_length) }}</div>
-          <div class="stat-label">Redis 待落库</div>
+          <div class="stat-label">待处理队列</div>
         </div>
       </div>
 

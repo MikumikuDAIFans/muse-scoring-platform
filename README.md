@@ -10,12 +10,12 @@
   - 细节完成度
 - 管理员统计面板
 - 图片批量导入
-- 评分结果异步入库
+- 评分结果直接入库
 
 ## 技术栈
 
 - 前端：Vue 3、Vite、Pinia、Axios
-- 后端：FastAPI、SQLAlchemy、asyncpg、Redis
+- 后端：FastAPI、SQLAlchemy、asyncpg
 - 数据库：PostgreSQL
 
 ## 项目结构
@@ -46,7 +46,6 @@ pip install -r requirements.txt
 
 ```env
 DATABASE_URL=postgresql+asyncpg://...
-REDIS_URL=redis://...
 JWT_SECRET=...
 ADMIN_USERNAME=...
 ADMIN_PASSWORD=...
@@ -91,10 +90,9 @@ python import_images.py
 
 ## 评分流转
 
-1. 用户请求一批待标注图片
-2. 前端提交评分到 `/api/score`
-3. 评分先写入 Redis 队列
-4. 后台 worker 再批量写入 PostgreSQL
+1. 用户请求待标注图片任务
+2. 前端提交评分到 `/api/tasks/{task_id}/submit` 或兼容接口 `/api/score`
+3. 后端直接写入 PostgreSQL
 
 ## 管理端可见信息
 
@@ -103,7 +101,7 @@ python import_images.py
 - 总评分数
 - 今日评分数
 - 活跃用户数
-- Redis 待落库数量
+- 当前待落库数量固定为 0（已移除 Redis 队列）
 
 ## 说明
 

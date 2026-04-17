@@ -13,16 +13,6 @@ services:
     ports:
       - "5432:5432"
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --maxmemory 512mb --maxmemory-policy noeviction --appendonly yes
-    volumes:
-      - redis_data:/data
-    # 生产环境请移除此 ports 配置，禁止公网直接访问
-    # 仅本地开发时需要调试才开放
-    ports:
-      - "6380:6379"
-
   pgbouncer:
     image: edoburu/pgbouncer:latest
     environment:
@@ -41,7 +31,6 @@ services:
       - .env
     depends_on:
       - postgres
-      - redis
     ports:
       - "8000:8000"
 
@@ -57,4 +46,3 @@ services:
 
 volumes:
   pg_data:
-  redis_data:

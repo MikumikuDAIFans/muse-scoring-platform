@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-import redis.asyncio as aioredis
-from database import get_db, get_redis
+from database import get_db
 from auth import require_admin
 from models import User
 
@@ -13,7 +12,6 @@ router = APIRouter()
 async def admin_stats(
     _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-    r: aioredis.Redis = Depends(get_redis),
 ):
     total_images = (await db.execute(
         text("SELECT COUNT(*) FROM images WHERE COALESCE(deleted, FALSE) = FALSE")
@@ -34,7 +32,6 @@ async def admin_stats(
     today_scores = (await db.execute(text(
         "SELECT COUNT(*) FROM scores WHERE submitted_at >= NOW() - INTERVAL '1 day'"
     ))).scalar()
-    queue_len = await r.llen("score_queue")
     return {
         "total_images": total_images,
         "annotated_images": annotated_images,
@@ -42,7 +39,7 @@ async def admin_stats(
         "total_users": total_users,
         "active_users_today": active_today,
         "today_scores": today_scores,
-        "redis_queue_length": queue_len,
+        "redis_queue_length": 0,
     }
 
 

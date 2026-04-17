@@ -1,4 +1,3 @@
-import asyncio
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +11,6 @@ from admin_routes import router as admin_router
 from export_routes import router as export_router
 from health import router as health_router
 from middleware import register_exception_handlers
-from redis_worker import process_scores
 
 app = FastAPI(title="Muse Scoring Platform")
 
@@ -55,7 +53,7 @@ app.include_router(health_router)
 
 @app.on_event("startup")
 async def startup():
-    """启动时初始化数据库和默认管理员，并启动Redis Worker"""
+    """启动时初始化数据库和默认管理员"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -75,11 +73,6 @@ async def startup():
                 await session.commit()
                 print(f"Admin user '{admin_user}' created.")
 
-    # Start Redis Worker as background task
-    asyncio.create_task(process_scores())
-    print("Redis Worker started as background task.")
-
-
 @app.on_event("shutdown")
 async def shutdown():
     """优雅关闭"""
@@ -87,6 +80,4 @@ async def shutdown():
     logger = logging.getLogger(__name__)
     logger.info("Shutting down, closing connections...")
     await engine.dispose()
-    from database import redis
-    await redis.close()
     logger.info("Shutdown complete.")

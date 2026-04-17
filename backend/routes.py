@@ -1,15 +1,14 @@
-import json
 import os
 from datetime import datetime, timedelta, timezone
 
-import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import get_current_user
-from database import get_db, get_redis
-from models import User
+from database import get_db
+from models import Score, User
 from schemas import NextTaskRequest, ScoreRequest, TaskScoreRequest, TurnstileRequest
 from turnstile import verify_turnstile
 
@@ -166,7 +165,6 @@ async def _assign_new_task(db: AsyncSession, user_id: int):
         },
     )
     task_row = task_result.fetchone()
-
     await db.commit()
 
     return {
@@ -211,12 +209,46 @@ async def _select_task_for_user(db: AsyncSession, user_id: int, current_task_id:
     return await _assign_new_task(db, user_id)
 
 
-async def _enqueue_score_payload(r: aioredis.Redis, payload: dict) -> None:
-    dedup_key = f"dedup:submit:{payload['user_id']}:{payload['image_id']}"
-    was_locked = await r.set(dedup_key, "1", ex=10, nx=True)
-    if not was_locked:
+async def _persist_score(db: AsyncSession, payload: dict, *, mark_task_submitted: bool) -> None:
+    insert_sql = (
+        insert(Score)
+        .values(payload)
+        .on_conflict_do_nothing(index_elements=["user_id", "image_id"])
+        .returning(Score.image_id)
+    )
+    result = await db.execute(insert_sql)
+    inserted = result.fetchone()
+    if not inserted:
+        await db.rollback()
         raise HTTPException(409, "Already scored this image")
-    await r.lpush("score_queue", json.dumps(payload))
+
+    image_id = payload["image_id"]
+
+    await db.execute(
+        text(
+            """
+            UPDATE images
+            SET score_count = COALESCE(score_count, 0) + 1,
+                status = 'completed'
+            WHERE id = :image_id
+            """
+        ),
+        {"image_id": image_id},
+    )
+
+    if mark_task_submitted and payload.get("task_id") is not None:
+        await db.execute(
+            text(
+                """
+                UPDATE annotation_tasks
+                SET status = 'submitted', submitted_at = NOW()
+                WHERE id = :task_id
+                """
+            ),
+            {"task_id": payload["task_id"]},
+        )
+
+    await db.commit()
 
 
 @router.post("/api/tasks/next")
@@ -239,7 +271,6 @@ async def submit_task_score(
     req: TaskScoreRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    r: aioredis.Redis = Depends(get_redis),
 ):
     task_result = await db.execute(
         text(
@@ -273,20 +304,7 @@ async def submit_task_score(
         "aesthetic_score": req.aesthetic_score,
         "completeness_score": req.completeness_score,
     }
-    await _enqueue_score_payload(r, payload)
-
-    await db.execute(
-        text(
-            """
-            UPDATE annotation_tasks
-            SET status = 'submitted', submitted_at = NOW()
-            WHERE id = :task_id
-            """
-        ),
-        {"task_id": task_id},
-    )
-    await db.commit()
-
+    await _persist_score(db, payload, mark_task_submitted=True)
     return {"status": "ok"}
 
 
@@ -318,16 +336,14 @@ async def get_image_batch(
     if not images:
         return {"images": [], "message": "All images have been annotated"}
 
-    return {
-        "images": [{"id": row.id, "url": _build_image_url(row)} for row in images]
-    }
+    return {"images": [{"id": row.id, "url": _build_image_url(row)} for row in images]}
 
 
 @router.post("/api/score")
 async def submit_score(
     req: ScoreRequest,
     user: User = Depends(get_current_user),
-    r: aioredis.Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db),
 ):
     payload = {
         "task_id": None,
@@ -336,7 +352,7 @@ async def submit_score(
         "aesthetic_score": req.aesthetic_score,
         "completeness_score": req.completeness_score,
     }
-    await _enqueue_score_payload(r, payload)
+    await _persist_score(db, payload, mark_task_submitted=False)
     return {"status": "ok"}
 
 
