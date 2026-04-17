@@ -46,6 +46,13 @@
           <div class="stat-value">{{ formatNum(stats.active_users_today) }}</div>
           <div class="stat-label">今日活跃</div>
         </div>
+        <div class="stat-card export-card">
+          <div class="export-actions">
+            <button class="export-btn" @click="downloadExport('csv')">CSV</button>
+            <button class="export-btn" @click="downloadExport('jsonl')">JSONL</button>
+          </div>
+          <div class="stat-label export-label">导出已打分数据</div>
+        </div>
       </div>
 
       <!-- 用户排行 -->
@@ -139,6 +146,35 @@ async function fetchTopUsers() {
 async function refreshAll() {
   await Promise.all([fetchAdminStats(), fetchTopUsers()])
   loading.value = false
+}
+
+function downloadExport(format) {
+  const token = localStorage.getItem('token')
+  const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+  const query = `/api/export?format=${format}`
+  const url = `${baseURL}${query}`
+
+  fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error('导出失败')
+      }
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = format === 'csv' ? 'scored_data.csv' : 'scored_data.jsonl'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(objectUrl)
+    })
+    .catch((error) => {
+      console.error('Failed to export data:', error)
+      alert('导出失败，请稍后重试')
+    })
 }
 
 onMounted(() => {
@@ -331,6 +367,42 @@ function onLogout() {
   color: #a08a8a;
   font-weight: 600;
   margin-top: 4px;
+}
+
+.export-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+
+.export-actions {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+}
+
+.export-btn {
+  min-width: 78px;
+  padding: 10px 16px;
+  border: 2px solid #ff758c;
+  background: #fff;
+  color: #ff758c;
+  font-size: 0.95rem;
+  font-weight: 800;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+}
+
+.export-btn:hover {
+  background: #ff758c;
+  color: #fff;
+}
+
+.export-label {
+  margin-top: 0;
 }
 
 .leaderboard-table {

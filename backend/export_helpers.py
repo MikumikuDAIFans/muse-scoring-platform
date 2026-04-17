@@ -4,15 +4,15 @@ import json
 
 
 async def generate_csv(rows):
-    """异步CSV生成器（流式）"""
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["username", "image_id", "aesthetic_score", "completeness_score", "submitted_at"])
+    writer.writerow(["r2_url", "aesthetic_score", "completeness_score"])
     yield output.getvalue()
     output.seek(0)
     output.truncate(0)
+
     for row in rows:
-        writer.writerow([row.username, row.image_id, row.aesthetic_score, row.completeness_score, row.submitted_at])
+        writer.writerow([row.r2_url, row.aesthetic_score, row.completeness_score])
         data = output.getvalue()
         output.seek(0)
         output.truncate(0)
@@ -20,12 +20,12 @@ async def generate_csv(rows):
 
 
 async def generate_jsonl(rows):
-    """异步JSONL生成器（流式）"""
     for row in rows:
-        yield json.dumps({
-            "username": row.username,
-            "image_id": row.image_id,
-            "aesthetic_score": row.aesthetic_score,
-            "completeness_score": row.completeness_score,
-            "submitted_at": str(row.submitted_at)
-        }, ensure_ascii=False) + "\n"
+        yield json.dumps(
+            {
+                "r2_url": row.r2_url,
+                "aesthetic_score": row.aesthetic_score,
+                "completeness_score": row.completeness_score,
+            },
+            ensure_ascii=False,
+        ) + "\n"
