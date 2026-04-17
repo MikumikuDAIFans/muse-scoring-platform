@@ -8,30 +8,103 @@
       <div
         class="slides-track"
         :class="{ instant: instantReset }"
-        :style="{ transform: `translateY(-${slideIndex * 100}%)` }"
+        :style="{ transform: `translateY(-${slideIndex * 50}%)` }"
       >
         <div class="slide">
-          <TaskPanel
-            v-if="currentTask"
-            :task="currentTask"
-            :score="score"
-            :is-submitting="scoreStore.submitting"
-            :show-prefetching="scoreStore.prefetching"
-            @set-score="setScore"
-            @img-error="onImgErr"
-          />
+          <div class="slide-inner" v-if="currentTask">
+            <div class="img-panel">
+              <img
+                :src="currentTask.image_url"
+                :alt="'Image ' + currentTask.image_id"
+                class="main-img"
+                @error="onImgErr"
+              />
+            </div>
+
+            <div class="rate-panel">
+              <div class="rate-inner">
+                <div class="badge">进度 {{ Math.min(scoreStore.completedCount + 1, scoreStore.ROUND_SIZE) }} / {{ scoreStore.ROUND_SIZE }}</div>
+
+                <div class="rate-section">
+                  <h2 class="rate-title">1. 这张图片的 <span class="text-pink bold">美学表现</span> 如何？</h2>
+                  <div class="bubbles">
+                    <div
+                      v-for="n in 10"
+                      :key="'a' + n"
+                      class="bubble"
+                      :class="{ on: score.aesthetic === n }"
+                      @click="setScore('aesthetic', n)"
+                    >
+                      {{ n }}
+                    </div>
+                  </div>
+                  <div class="labels"><span>辣眼睛</span><span>神仙画作</span></div>
+                </div>
+
+                <div class="rate-section">
+                  <h2 class="rate-title">2. 这张图片的 <span class="text-pink2 bold">细节完成度</span> 如何？</h2>
+                  <div class="bubbles">
+                    <div
+                      v-for="n in 10"
+                      :key="'c' + n"
+                      class="bubble"
+                      :class="{ on: score.completeness === n }"
+                      @click="setScore('completeness', n)"
+                    >
+                      {{ n }}
+                    </div>
+                  </div>
+                  <div class="labels"><span>粗糙线稿</span><span>细节拉满</span></div>
+                </div>
+
+                <div class="status-bar">
+                  <div v-if="scoreStore.submitting" class="ok-msg">收到啦，正在切换到下一张...</div>
+                  <div v-else-if="fullyRated" class="ok-msg">收到啦，自动前往下一张</div>
+                  <div v-else-if="halfRated" class="hint-msg">再选另一个维度的分数就可以提交</div>
+                  <div v-else-if="scoreStore.prefetching" class="hint-msg">后台正在准备下一张图片</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="slide">
-          <TaskPanel
-            v-if="nextTask"
-            :task="nextTask"
-            :score="emptyScore"
-            :is-submitting="false"
-            :show-prefetching="false"
-            @set-score="noop"
-            @img-error="onImgErr"
-          />
+          <div class="slide-inner" v-if="nextTask">
+            <div class="img-panel">
+              <img
+                :src="nextTask.image_url"
+                :alt="'Image ' + nextTask.image_id"
+                class="main-img"
+                @error="onImgErr"
+              />
+            </div>
+
+            <div class="rate-panel">
+              <div class="rate-inner">
+                <div class="badge">进度 {{ Math.min(scoreStore.completedCount + 2, scoreStore.ROUND_SIZE) }} / {{ scoreStore.ROUND_SIZE }}</div>
+
+                <div class="rate-section">
+                  <h2 class="rate-title">1. 这张图片的 <span class="text-pink bold">美学表现</span> 如何？</h2>
+                  <div class="bubbles">
+                    <div v-for="n in 10" :key="'na' + n" class="bubble">{{ n }}</div>
+                  </div>
+                  <div class="labels"><span>辣眼睛</span><span>神仙画作</span></div>
+                </div>
+
+                <div class="rate-section">
+                  <h2 class="rate-title">2. 这张图片的 <span class="text-pink2 bold">细节完成度</span> 如何？</h2>
+                  <div class="bubbles">
+                    <div v-for="n in 10" :key="'nc' + n" class="bubble">{{ n }}</div>
+                  </div>
+                  <div class="labels"><span>粗糙线稿</span><span>细节拉满</span></div>
+                </div>
+
+                <div class="status-bar">
+                  <div class="hint-msg">下一张已准备好</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -41,7 +114,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useScoreStore } from '../stores/score'
 
@@ -51,104 +124,13 @@ const userStore = useUserStore()
 const scoreStore = useScoreStore()
 
 const score = reactive({ aesthetic: null, completeness: null })
-const emptyScore = { aesthetic: null, completeness: null }
 const slideIndex = ref(0)
 const instantReset = ref(false)
 
 const currentTask = computed(() => scoreStore.currentTask)
 const nextTask = computed(() => scoreStore.nextTask)
-
-const TaskPanel = defineComponent({
-  name: 'TaskPanel',
-  props: {
-    task: { type: Object, default: null },
-    score: { type: Object, required: true },
-    isSubmitting: { type: Boolean, default: false },
-    showPrefetching: { type: Boolean, default: false },
-  },
-  emits: ['set-score', 'img-error'],
-  setup(props, { emit: emitPanel }) {
-    const fullyRated = computed(() => props.score.aesthetic > 0 && props.score.completeness > 0)
-    const halfRated = computed(() => !!(props.score.aesthetic || props.score.completeness))
-    return () =>
-      h('div', { class: 'slide-inner' }, [
-        h('div', { class: 'img-panel' }, [
-          props.task
-            ? h('img', {
-                src: props.task.image_url,
-                alt: `Image ${props.task.image_id}`,
-                class: 'main-img',
-                onError: (event) => emitPanel('img-error', event),
-              })
-            : null,
-        ]),
-        h('div', { class: 'rate-panel' }, [
-          h('div', { class: 'rate-inner' }, [
-            h('div', { class: 'badge' }, `进度 ${Math.min(scoreStore.completedCount + 1, scoreStore.ROUND_SIZE)} / ${scoreStore.ROUND_SIZE}`),
-            h('div', { class: 'rate-section' }, [
-              h('h2', { class: 'rate-title' }, [
-                '1. 这张图片的 ',
-                h('span', { class: 'text-pink bold' }, '美学表现'),
-                ' 如何？',
-              ]),
-              h(
-                'div',
-                { class: 'bubbles' },
-                Array.from({ length: 10 }, (_, index) =>
-                  h(
-                    'div',
-                    {
-                      key: `a${index + 1}`,
-                      class: ['bubble', { on: props.score.aesthetic === index + 1 }],
-                      onClick: () => emitPanel('set-score', 'aesthetic', index + 1),
-                    },
-                    String(index + 1)
-                  )
-                )
-              ),
-              h('div', { class: 'labels' }, [h('span', null, '辣眼睛'), h('span', null, '神仙画作')]),
-            ]),
-            h('div', { class: 'rate-section' }, [
-              h('h2', { class: 'rate-title' }, [
-                '2. 这张图片的 ',
-                h('span', { class: 'text-pink2 bold' }, '细节完成度'),
-                ' 如何？',
-              ]),
-              h(
-                'div',
-                { class: 'bubbles' },
-                Array.from({ length: 10 }, (_, index) =>
-                  h(
-                    'div',
-                    {
-                      key: `c${index + 1}`,
-                      class: ['bubble', { on: props.score.completeness === index + 1 }],
-                      onClick: () => emitPanel('set-score', 'completeness', index + 1),
-                    },
-                    String(index + 1)
-                  )
-                )
-              ),
-              h('div', { class: 'labels' }, [h('span', null, '粗糙线稿'), h('span', null, '细节拉满')]),
-            ]),
-            h('div', { class: 'status-bar' }, [
-              props.isSubmitting
-                ? h('div', { class: 'ok-msg' }, '收到啦，正在切换到下一张...')
-                : fullyRated.value
-                  ? h('div', { class: 'ok-msg' }, '收到啦，自动前往下一张')
-                  : halfRated.value
-                    ? h('div', { class: 'hint-msg' }, '再选另一个维度的分数就可以提交')
-                    : props.showPrefetching
-                      ? h('div', { class: 'hint-msg' }, '后台正在准备下一张图片')
-                      : null,
-            ]),
-          ]),
-        ]),
-      ])
-  },
-})
-
-function noop() {}
+const fullyRated = computed(() => score.aesthetic > 0 && score.completeness > 0)
+const halfRated = computed(() => !!(score.aesthetic || score.completeness))
 
 function resetScore() {
   score.aesthetic = null
@@ -165,7 +147,7 @@ async function ensureNextTask() {
 async function setScore(field, value) {
   if (!currentTask.value || scoreStore.submitting) return
   score[field] = value
-  if (score.aesthetic > 0 && score.completeness > 0) {
+  if (fullyRated.value) {
     await submitAndAdvance()
   }
 }
