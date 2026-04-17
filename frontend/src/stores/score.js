@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import api from '../api'
+
+const ROUND_SIZE = 10
 
 function preloadImage(url) {
   if (!url) return
@@ -15,8 +17,28 @@ export const useScoreStore = defineStore('score', () => {
   const prefetching = ref(false)
   const submitting = ref(false)
   const message = ref('')
+  const assignedCount = ref(0)
+  const completedCount = ref(0)
 
-  async function fetchNextTask({ turnstileToken = null, currentTaskId = null } = {}) {
+  const progressPercent = computed(() => {
+    if (!currentTask.value && completedCount.value === 0) return 0
+    return Math.min(((completedCount.value + (currentTask.value ? 1 : 0)) / ROUND_SIZE) * 100, 100)
+  })
+
+  const roundAssignedFull = computed(() => assignedCount.value >= ROUND_SIZE)
+  const roundCompleted = computed(() => completedCount.value >= ROUND_SIZE)
+
+  function clearTasks() {
+    currentTask.value = null
+    nextTask.value = null
+    message.value = ''
+    assignedCount.value = 0
+    completedCount.value = 0
+  }
+
+  async function requestTask({ turnstileToken = null, currentTaskId = null } = {}) {
+    if (roundCompleted.value) return null
+    if (currentTaskId != null && roundAssignedFull.value) return null
     loading.value = true
     try {
       const payload = {}
@@ -33,20 +55,26 @@ export const useScoreStore = defineStore('score', () => {
     }
   }
 
-  async function startSession(turnstileToken = null) {
-    const task = await fetchNextTask({ turnstileToken })
+  async function startRound(turnstileToken = null) {
+    clearTasks()
+    const task = await requestTask({ turnstileToken })
     currentTask.value = task
-    nextTask.value = null
+    if (task) {
+      assignedCount.value = 1
+    }
     return task
   }
 
   async function prefetchNextTask() {
     if (!currentTask.value || nextTask.value || prefetching.value) return nextTask.value
+    if (assignedCount.value >= ROUND_SIZE) return null
+
     prefetching.value = true
     try {
-      const task = await fetchNextTask({ currentTaskId: currentTask.value.task_id })
+      const task = await requestTask({ currentTaskId: currentTask.value.task_id })
       if (task && task.task_id !== currentTask.value.task_id) {
         nextTask.value = task
+        assignedCount.value += 1
         preloadImage(task.image_url)
       }
       return nextTask.value
@@ -63,6 +91,7 @@ export const useScoreStore = defineStore('score', () => {
         aesthetic_score: aesthetic,
         completeness_score: completeness,
       })
+      completedCount.value += 1
       return true
     } catch (err) {
       message.value = err.detail || '提交失败'
@@ -78,24 +107,24 @@ export const useScoreStore = defineStore('score', () => {
     return currentTask.value
   }
 
-  function clearTasks() {
-    currentTask.value = null
-    nextTask.value = null
-    message.value = ''
-  }
-
   return {
+    ROUND_SIZE,
     currentTask,
     nextTask,
     loading,
     prefetching,
     submitting,
     message,
-    startSession,
-    fetchNextTask,
+    assignedCount,
+    completedCount,
+    progressPercent,
+    roundAssignedFull,
+    roundCompleted,
+    clearTasks,
+    requestTask,
+    startRound,
     prefetchNextTask,
     submitTaskScore,
     promoteNextTask,
-    clearTasks,
   }
 })

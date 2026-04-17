@@ -7,24 +7,24 @@
     <div v-else-if="currentPage === 'welcome'" class="welcome-overlay" key="welcome">
       <div class="welcome-content text-center">
         <div class="emoji-bounce">🎯</div>
-        <h1 class="title-welcome">欢迎来到打分环节</h1>
+        <h1 class="title-welcome">欢迎来到打分环节！</h1>
         <p class="subtitle">
-          Hello, <span class="text-pink">{{ userStore.username }}</span><br>
+          Hello, <span class="text-pink">{{ userStore.username }}</span>！<br>
           已打 <span class="text-pink">{{ userStore.stats.total_scores }}</span> 次分，今天
           <span class="text-pink">{{ userStore.stats.today_scores }}</span> 次
         </p>
-        <p class="hint-text">每次只展示 1 张图，后台最多预取 1 张下一张，提交后会立即切换。</p>
+        <p class="hint-text">本轮共 10 张图片，请从“美学”和“完成度”两个维度进行评分。</p>
 
         <div class="turnstile-container" v-if="turnstileSiteKey">
           <div ref="turnstileWidget" class="cf-turnstile"></div>
         </div>
         <p v-if="turnstileSiteKey && !turnstileReady" class="hint-text turnstile-hint">
-          请先完成人机验证，再开始打分
+          请先完成人机验证，再开始本轮打分
         </p>
 
         <button @click="startScoring" class="tf-btn" :disabled="isLoading">
-          <span v-if="isLoading">正在准备图片...</span>
-          <span v-else>开始打分</span>
+          <span v-if="isLoading">正在召唤图片中...</span>
+          <span v-else>开始本轮打分</span>
         </button>
 
         <div class="logout-area">
@@ -35,15 +35,28 @@
 
     <ScoreCard
       v-else-if="currentPage === 'scoring'"
+      @batch-complete="onBatchComplete"
       @no-more-images="onNoMoreImages"
       key="scoring"
     />
 
+    <div v-else-if="currentPage === 'done'" class="done-overlay" key="done">
+      <div class="done-content text-center">
+        <div class="gift-icon">🎁</div>
+        <h1 class="title-done">本轮搞定啦！</h1>
+        <p class="subtitle">评分已飞进数据库，超感谢你的帮忙！继续下一轮吗？</p>
+        <div class="done-actions">
+          <button @click="startAnother" class="tf-btn">再来一轮</button>
+          <button @click="goWelcome" class="rest-btn">休息一下</button>
+        </div>
+      </div>
+    </div>
+
     <div v-else-if="currentPage === 'all-done'" class="done-overlay" key="all-done">
       <div class="done-content text-center">
         <div class="gift-icon">🏆</div>
-        <h1 class="title-done">所有图片都已完成标注</h1>
-        <p class="subtitle">{{ noMoreMsg || '感谢你的辛勤付出，数据集标注已经全部完成。' }}</p>
+        <h1 class="title-done">所有图片都已完成标注！</h1>
+        <p class="subtitle">{{ noMoreMsg || '感谢你的辛勤付出，数据集标注已经全部完成啦。' }}</p>
         <div class="done-actions">
           <button @click="goWelcome" class="rest-btn">返回首页</button>
         </div>
@@ -134,7 +147,6 @@ function initTurnstile() {
 
 function renderTurnstile() {
   if (!window.turnstile || !turnstileWidget.value || currentPage.value !== 'welcome') return
-
   if (turnstileWidget.value.querySelector('iframe')) return
 
   if (turnstileWidgetId) {
@@ -170,21 +182,19 @@ async function onLoginSuccess() {
 }
 
 async function startScoring() {
-  if (turnstileSiteKey.value && (!turnstileReady.value || !turnstileToken.value)) {
-    return
-  }
+  if (turnstileSiteKey.value && (!turnstileReady.value || !turnstileToken.value)) return
 
   isLoading.value = true
+  const token = turnstileToken.value
   scoreStore.clearTasks()
 
-  const token = turnstileToken.value
   if (turnstileWidgetId && window.turnstile) {
     window.turnstile.reset(turnstileWidgetId)
   }
   turnstileToken.value = ''
 
   try {
-    const task = await scoreStore.startSession(token)
+    const task = await scoreStore.startRound(token)
     if (!task) {
       noMoreMsg.value = scoreStore.message || '所有图片都已完成标注'
       currentPage.value = 'all-done'
@@ -196,9 +206,24 @@ async function startScoring() {
   }
 }
 
+function onBatchComplete() {
+  currentPage.value = 'done'
+}
+
 function onNoMoreImages(message) {
   noMoreMsg.value = message
   currentPage.value = 'all-done'
+}
+
+function startAnother() {
+  currentPage.value = 'welcome'
+  scoreStore.clearTasks()
+  turnstileToken.value = ''
+  if (turnstileWidgetId && window.turnstile) {
+    window.turnstile.remove(turnstileWidgetId)
+    turnstileWidgetId = null
+  }
+  turnstileReady.value = !turnstileSiteKey.value
 }
 
 function goWelcome() {
