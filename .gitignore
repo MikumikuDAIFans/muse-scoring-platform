@@ -35,3 +35,6 @@ images/
 # Temporary files
 *.tmp
 *.bak
+
+# Local deployment notes with live credentials
+DEPLOY-CLOUDFLARE.md
