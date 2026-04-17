@@ -90,6 +90,38 @@ async def _expire_user_tasks(db: AsyncSession, user_id: int) -> None:
     await db.commit()
 
 
+async def _normalize_image_statuses(db: AsyncSession) -> None:
+    await db.execute(
+        text(
+            """
+            UPDATE images AS i
+            SET status = 'pending'
+            WHERE COALESCE(i.deleted, FALSE) = FALSE
+              AND COALESCE(i.score_count, 0) = 0
+              AND COALESCE(i.status, 'pending') <> 'disabled'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM annotation_tasks t
+                  WHERE t.image_id = i.id
+                    AND t.status = 'assigned'
+                    AND t.expires_at > NOW()
+              )
+            """
+        )
+    )
+    await db.execute(
+        text(
+            """
+            UPDATE images
+            SET status = 'completed'
+            WHERE COALESCE(score_count, 0) > 0
+              AND COALESCE(status, 'pending') <> 'disabled'
+            """
+        )
+    )
+    await db.commit()
+
+
 async def _get_active_tasks(db: AsyncSession, user_id: int):
     result = await db.execute(
         text(
@@ -125,7 +157,7 @@ async def _assign_new_task(db: AsyncSession, user_id: int):
                 FROM images i
                 WHERE COALESCE(i.deleted, FALSE) = FALSE
                   AND COALESCE(i.score_count, 0) = 0
-                  AND COALESCE(i.status, 'pending') = 'pending'
+                  AND COALESCE(i.status, 'pending') <> 'disabled'
                   AND NOT EXISTS (
                       SELECT 1
                       FROM annotation_tasks t
@@ -190,6 +222,7 @@ def _serialize_task(row) -> dict:
 
 async def _select_task_for_user(db: AsyncSession, user_id: int, current_task_id: int | None):
     await _expire_user_tasks(db, user_id)
+    await _normalize_image_statuses(db)
     active_tasks = await _get_active_tasks(db, user_id)
 
     if current_task_id is not None:
@@ -316,6 +349,7 @@ async def get_image_batch(
     db: AsyncSession = Depends(get_db),
 ):
     await _verify_turnstile_or_reject(req.turnstile_token, request)
+    await _normalize_image_statuses(db)
 
     result = await db.execute(
         text(
@@ -324,7 +358,7 @@ async def get_image_batch(
             FROM images
             WHERE COALESCE(deleted, FALSE) = FALSE
               AND COALESCE(score_count, 0) = 0
-              AND COALESCE(status, 'pending') = 'pending'
+              AND COALESCE(status, 'pending') <> 'disabled'
             ORDER BY RANDOM()
             LIMIT :limit
             """

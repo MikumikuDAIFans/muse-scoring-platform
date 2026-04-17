@@ -46,11 +46,6 @@
           <div class="stat-value">{{ formatNum(stats.active_users_today) }}</div>
           <div class="stat-label">今日活跃</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon">📦</div>
-          <div class="stat-value">{{ formatNum(stats.redis_queue_length) }}</div>
-          <div class="stat-label">待处理队列</div>
-        </div>
       </div>
 
       <!-- 用户排行 -->
@@ -107,8 +102,7 @@ const stats = ref({
   total_scores: 0,
   total_users: 0,
   today_scores: 0,
-  qps: 0,
-  redis_queue: 0
+  qps: 0
 })
 const topUsers = ref([])
 let refreshTimer = null

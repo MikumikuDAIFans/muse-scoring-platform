@@ -39,7 +39,6 @@ async def admin_stats(
         "total_users": total_users,
         "active_users_today": active_today,
         "today_scores": today_scores,
-        "redis_queue_length": 0,
     }
 
 
